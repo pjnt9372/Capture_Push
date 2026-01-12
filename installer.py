@@ -245,12 +245,13 @@ class SilentInstaller:
             
             # 3. 安装依赖
             venv_pip = self.venv_dir / "Scripts" / "pip.exe"
-            dependencies = ["requests", "beautifulsoup4", "pyside6"]
             
-            for dep in dependencies:
-                self.log(f"[INFO] 安装 {dep}...")
+            # 检查是否存在 requirements.txt，如果有则优先使用
+            req_file = Path(__file__).parent / "requirements.txt"
+            if req_file.exists():
+                self.log("[INFO] 使用 requirements.txt 安装依赖...")
                 
-                cmd = [str(venv_pip), "install", dep]
+                cmd = [str(venv_pip), "install", "-r", str(req_file)]
                 if self.mirror_url:
                     cmd.extend(["-i", self.mirror_url, "--trusted-host", "mirrors.aliyun.com"])
                 
@@ -258,13 +259,35 @@ class SilentInstaller:
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=300
+                    timeout=600  # 10分钟超时，因为安装多个包可能较慢
                 )
                 
                 if result.returncode != 0:
-                    raise Exception(f"安装 {dep} 失败: {result.stderr}")
+                    raise Exception(f"安装依赖失败: {result.stderr}")
                 
-                self.log(f"[INFO] ✓ {dep} 安装成功")
+                self.log("[INFO] ✓ 所有依赖安装成功")
+            else:
+                # 向后兼容：如果没有 requirements.txt，则逐个安装
+                dependencies = ["requests", "beautifulsoup4", "pyside6"]
+                
+                for dep in dependencies:
+                    self.log(f"[INFO] 安装 {dep}...")
+                    
+                    cmd = [str(venv_pip), "install", dep]
+                    if self.mirror_url:
+                        cmd.extend(["-i", self.mirror_url, "--trusted-host", "mirrors.aliyun.com"])
+                    
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    
+                    if result.returncode != 0:
+                        raise Exception(f"安装 {dep} 失败: {result.stderr}")
+                    
+                    self.log(f"[INFO] ✓ {dep} 安装成功")
             
             # 4. 完成
             self.log("[INFO] ✓ 所有依赖安装完成！")
