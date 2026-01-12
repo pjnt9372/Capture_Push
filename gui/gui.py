@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QLineEdit, QPushButton, QFormLayout, QMessageBox,
     QCheckBox, QSpinBox, QHBoxLayout, QGroupBox
 )
-from crypto_util import encrypt, decrypt
 
 # 动态计算配置文件路径
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -116,14 +115,14 @@ class ConfigWindow(QWidget):
     def load_config(self):
         # 加载账号配置
         self.username.setText(self.cfg.get("account", "username", fallback=""))
-        self.password.setText(decrypt(self.cfg.get("account", "password", fallback="")))
+        self.password.setText(self.cfg.get("account", "password", fallback=""))
 
         # 加载邮箱配置
         self.smtp.setText(self.cfg.get("email", "smtp", fallback=""))
         self.port.setText(self.cfg.get("email", "port", fallback=""))
         self.sender.setText(self.cfg.get("email", "sender", fallback=""))
         self.receiver.setText(self.cfg.get("email", "receiver", fallback=""))
-        self.auth.setText(decrypt(self.cfg.get("email", "auth", fallback="")))
+        self.auth.setText(self.cfg.get("email", "auth", fallback=""))
 
         # 加载学期配置
         self.first_monday.setText(
@@ -151,7 +150,7 @@ class ConfigWindow(QWidget):
         if "account" not in self.cfg:
             self.cfg["account"] = {}
         self.cfg["account"]["username"] = self.username.text()
-        self.cfg["account"]["password"] = encrypt(self.password.text())
+        self.cfg["account"]["password"] = self.password.text()
 
         # 保存邮箱配置
         if "email" not in self.cfg:
@@ -160,7 +159,7 @@ class ConfigWindow(QWidget):
         self.cfg["email"]["port"] = self.port.text()
         self.cfg["email"]["sender"] = self.sender.text()
         self.cfg["email"]["receiver"] = self.receiver.text()
-        self.cfg["email"]["auth"] = encrypt(self.auth.text())
+        self.cfg["email"]["auth"] = self.auth.text()
 
         # 保存学期配置
         if "semester" not in self.cfg:
