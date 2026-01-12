@@ -5,3 +5,6 @@
 "tray/.vs/"
 "tray/out/"
 .venv/
+__pycache__/
+*.pyc
+*.pyo
