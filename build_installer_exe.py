@@ -19,9 +19,22 @@ def main():
         print(f"✗ 找不到 {installer_py}")
         sys.exit(1)
     
+    # 确定 PyInstaller 路径
+    if sys.platform.startswith('win'):
+        pyinstaller_path = project_root / ".venv" / "Scripts" / "pyinstaller.exe"
+    else:
+        pyinstaller_path = project_root / ".venv" / "bin" / "pyinstaller"
+    
+    # 检查虚拟环境中的 PyInstaller
+    if pyinstaller_path.exists():
+        pyinstaller_cmd = str(pyinstaller_path)
+    else:
+        # 回退到系统 PyInstaller
+        pyinstaller_cmd = "pyinstaller"
+    
     # PyInstaller 参数
     cmd = [
-        "pyinstaller",
+        pyinstaller_cmd,
         "--onefile",                    # 打包成单个文件
         "--console",                    # 显示控制台窗口
         "--name=GradeTracker_Installer", # 输出文件名
