@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 
 # ===== 日志初始化 =====
 import os
+import logging.handlers
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys._MEIPASS)
 else:
@@ -28,10 +29,25 @@ else:
     log_file_path = Path('push.log')
 
 try:
-    # 尝试加载 config.ini 中的日志配置
+    # 先尝试加载 config.ini 中的日志配置
     logging.config.fileConfig(str(CONFIG_PATH))
-    logger = logging.getLogger()
-    logger.info(f"成功加载 config.ini 中的日志配置，日志文件: {log_file_path}")
+    
+    # 检查是否成功加载了 FileHandler，如果是，则替换其文件路径
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            # 关闭原处理器并移除
+            handler.close()
+            root_logger.removeHandler(handler)
+    
+    # 添加新的文件处理器到用户可写目录
+    file_handler = logging.FileHandler(str(log_file_path), encoding='utf-8')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+    
+    logger = root_logger
+    logger.info(f"成功加载 config.ini 中的日志配置，文件处理器已重定向到: {log_file_path}")
 except (configparser.Error, Exception) as e:
     # 配置文件有问题，使用自定义配置
     logging.basicConfig(
