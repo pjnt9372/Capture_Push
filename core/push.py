@@ -17,15 +17,34 @@ else:
 CONFIG_PATH = BASE_DIR / 'config.ini'
 
 try:
+    # 尝试加载 config.ini 中的日志配置
     logging.config.fileConfig(str(CONFIG_PATH))
     logger = logging.getLogger()
-except Exception as e:
+    logger.info("成功加载 config.ini 中的日志配置")
+except configparser.Error as e:
+    # 如果配置文件格式错误，使用基本配置
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),  # 控制台输出
+            logging.FileHandler('push.log', encoding='utf-8')  # 文件输出到当前目录
+        ]
     )
     logger = logging.getLogger(__name__)
-    logger.warning(f"未能加载 config.ini 日志配置: {e}")
+    logger.warning(f"配置文件格式错误，使用默认日志配置: {e}")
+except Exception as e:
+    # 如果配置文件不存在或其他错误，使用基本配置
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),  # 控制台输出
+            logging.FileHandler('push.log', encoding='utf-8')  # 文件输出到当前目录
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    logger.warning(f"未能加载 config.ini 日志配置，使用默认配置: {e}")
 
 
 def load_mail_cfg():
