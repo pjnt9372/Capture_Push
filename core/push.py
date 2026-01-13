@@ -88,6 +88,19 @@ class EmailSender(NotificationSender):
             logger.info(f"✅ 邮件发送成功: {subject}")
             print(f"✅ 邮件发送成功: {subject}")
             return True
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"❌ SMTP 认证失败: {e}", exc_info=True)
+            # 检查是否是 Office365 常见问题
+            error_msg = str(e.args[1])
+            if "basic authentication is disabled" in error_msg.lower():
+                print("❌ 认证失败: Office365 已禁用基本认证")
+                print("💡 解决方案: 请使用应用密码而非账户密码")
+                print("   1. 为您的账户启用两步验证")
+                print("   2. 创建应用密码")
+                print("   3. 在配置文件中使用应用密码")
+            else:
+                print(f"❌ SMTP 认证失败: {e}")
+            return False
         except Exception as e:
             logger.error(f"❌ 邮件发送失败: {e}", exc_info=True)
             print(f"❌ 邮件发送失败: {e}")
