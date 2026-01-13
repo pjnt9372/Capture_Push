@@ -416,18 +416,34 @@ void ExecuteConfigGui() {
     std::string exe_dir = GetExecutableDirectory();
     std::string pythonw_path = exe_dir + "\\.venv\\Scripts\\pythonw.exe";
     std::string gui_path = exe_dir + "\\gui\\gui.py";
+    
+    LOG_DEBUG("程序目录: " + exe_dir);
+    LOG_DEBUG("Python 路径: " + pythonw_path);
+    LOG_DEBUG("GUI 脚本路径: " + gui_path);
 
     DWORD pythonw_attr = GetFileAttributesA(pythonw_path.c_str());
     DWORD gui_attr = GetFileAttributesA(gui_path.c_str());
+    
+    LOG_DEBUG("pythonw.exe 存在: " + std::string(pythonw_attr != INVALID_FILE_ATTRIBUTES ? "true" : "false"));
+    LOG_DEBUG("gui.py 存在: " + std::string(gui_attr != INVALID_FILE_ATTRIBUTES ? "true" : "false"));
 
     if (pythonw_attr == INVALID_FILE_ATTRIBUTES || gui_attr == INVALID_FILE_ATTRIBUTES) {
         LOG_ERROR("配置界面文件不存在");
-        MessageBoxA(NULL, "配置界面所需的 Python 环境未正确安装！\n请重新运行安装程序。", "错误", MB_OK | MB_ICONERROR);
+        std::string error_detail = "配置界面所需的文件未找到！\n\n";
+        if (pythonw_attr == INVALID_FILE_ATTRIBUTES) {
+            error_detail += "Python 环境未安装: " + pythonw_path + "\n";
+        }
+        if (gui_attr == INVALID_FILE_ATTRIBUTES) {
+            error_detail += "GUI 脚本未找到: " + gui_path + "\n";
+        }
+        error_detail += "\n请重新运行安装程序。";
+        MessageBoxA(NULL, error_detail.c_str(), "错误", MB_OK | MB_ICONERROR);
         return;
     }
 
     // 构建命令行
     std::string full_command = "\"" + pythonw_path + "\" \"" + gui_path + "\"";
+    LOG_DEBUG("执行命令: " + full_command);
 
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
@@ -438,16 +454,18 @@ void ExecuteConfigGui() {
     ZeroMemory(&pi, sizeof(pi));
 
     // 启动GUI程序（虚拟环境已包含所有依赖）
+    LOG_DEBUG("工作目录: " + exe_dir);
     if (CreateProcessA(NULL, (LPSTR)full_command.c_str(), NULL, NULL, FALSE,
                        0, NULL, exe_dir.c_str(), &si, &pi)) {
-        LOG_INFO("配置界面启动成功");
+        LOG_INFO("配置界面启动成功，进程ID: " + std::to_string(pi.dwProcessId));
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     } else {
         DWORD error = GetLastError();
         LOG_ERROR("配置界面启动失败，错误代码: " + std::to_string(error));
-        char error_msg[256];
-        sprintf_s(error_msg, "无法启动配置工具！\n错误代码：%lu\n请检查Python环境是否正确安装。", error);
+        char error_msg[512];
+        sprintf_s(error_msg, "无法启动配置工具！\n\n错误代码：%lu\n命令: %s\n工作目录: %s\n\n请检查Python环境是否正确安装。", 
+                  error, full_command.c_str(), exe_dir.c_str());
         MessageBoxA(NULL, error_msg, "错误", MB_OK | MB_ICONERROR);
     }
 }

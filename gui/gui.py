@@ -2,6 +2,17 @@ import sys
 import os
 import configparser
 from pathlib import Path
+
+# 确保能找到 core 模块
+if getattr(sys, 'frozen', False):
+    # 打包后的环境
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    # 开发环境 - 添加父目录到 sys.path
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel,
     QLineEdit, QPushButton, QFormLayout, QMessageBox,
