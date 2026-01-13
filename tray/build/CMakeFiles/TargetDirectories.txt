@@ -1,3 +1,0 @@
-E:/reascourse/pycharme/Capture_Push/tray/build/CMakeFiles/TrayApp.dir
-E:/reascourse/pycharme/Capture_Push/tray/build/CMakeFiles/ALL_BUILD.dir
-E:/reascourse/pycharme/Capture_Push/tray/build/CMakeFiles/ZERO_CHECK.dir
