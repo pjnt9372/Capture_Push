@@ -101,7 +101,7 @@ void CloseLogging() {
     }
 }
 
-// 安全日志写入（带时间戳，同时输出到控制台）
+// 安全日志写入（带时间戳，仅写入文件，可选择启用控制台输出）
 void LogMessage(const std::string& message) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -121,8 +121,8 @@ void LogMessage(const std::string& message) {
                << " | " << message;
     std::string log_line = log_stream.str();
 
-    // 输出到控制台（DEBUG模式）
-    std::cout << log_line << std::endl;
+    // 【调试选项】如需启用控制台输出，取消下面一行的注释
+    // std::cout << log_line << std::endl;
 
     // 写入日志文件
     if (g_log_file.is_open()) {
@@ -464,11 +464,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return 0;
 }
 
-int main(int argc, char* argv[]) {
-    // 启用控制台输出（UTF-8编码）
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    // 【调试选项】如需启用控制台输出，取消下面几行的注释
+    /*
     SetConsoleOutputCP(CP_UTF8);
     std::cout << "=== GradeTracker Tray App (Debug Mode) ===" << std::endl;
     std::cout << "Console logging enabled for debugging." << std::endl;
+    */
     
     InitLogging();
     LogMessage("Application starting...");
@@ -485,9 +487,6 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     
-    // 获取 HINSTANCE
-    HINSTANCE hInstance = GetModuleHandle(NULL);
-    
     const wchar_t CLASS_NAME[] = L"TrayAppClass";
     WNDCLASSW wc = {};
     wc.lpfnWndProc = WndProc;
@@ -496,8 +495,7 @@ int main(int argc, char* argv[]) {
     RegisterClassW(&wc);
     
     hwnd = CreateWindowExW(0, CLASS_NAME, L"学业助手托盘程序",
-                           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                           CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
+                           0, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
     
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -510,5 +508,5 @@ int main(int argc, char* argv[]) {
         CloseHandle(hMutex);
     }
     CloseLogging();
-    return 0;
+    return (int)msg.wParam;
 }
