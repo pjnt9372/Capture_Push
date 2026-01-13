@@ -96,15 +96,19 @@ def fetch_and_push_grades(push=False, force_update=False, push_all=False):
 
         # 如果要求推送
         if push:
+            logger.debug(f"进入推送逻辑: push_all={push_all}, 成绩数量={len(new_map)}, 变化数量={len(changed)}")
             if push_all:
                 # 推送所有成绩
                 logger.info(f"推送所有成绩（{len(new_map)} 条）")
+                logger.debug(f"推送的所有成绩: {list(new_map.items())}")
                 all_grades = {course: f"成绩：{score}" for course, score in new_map.items()}
+                logger.debug(f"格式化后的成绩: {all_grades}")
                 send_grade_mail(all_grades)
                 print(f"✅ 已推送所有成绩（{len(new_map)} 条）")
             elif changed:
                 # 只推送变化的成绩
                 logger.info(f"推送 {len(changed)} 条变化的成绩")
+                logger.debug(f"变化的成绩: {changed}")
                 send_grade_mail(changed)
                 print(f"✅ 已推送 {len(changed)} 条变化的成绩")
             else:

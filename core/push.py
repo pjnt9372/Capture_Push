@@ -47,6 +47,12 @@ class EmailSender(NotificationSender):
         auth = cfg.get("email", "auth")
         
         logger.debug(f"SMTP服务器: {smtp}:{port}, 发件人: {sender}, 收件人: {receiver}")
+        
+        # 验证配置是否为空
+        if not all([smtp, port, sender, receiver, auth]):
+            logger.error(f"邮件配置验证失败: smtp='{smtp}', port='{port}', sender='{sender}', receiver='{receiver}', auth='{'*' * len(auth) if auth else ''}'")
+            print(f"❌ 邮件配置验证失败，请检查配置文件")
+            return False
 
         msg = MIMEMultipart()
         msg["From"] = sender
@@ -54,6 +60,8 @@ class EmailSender(NotificationSender):
         msg["Subject"] = Header(subject, "utf-8")
 
         msg.attach(MIMEText(html, "html", "utf-8"))
+        
+        logger.debug(f"邮件消息构建完成，HTML长度: {len(html)}")
 
         try:
             logger.debug(f"连接到 SMTP 服务器: {smtp}:{port}")
@@ -61,6 +69,8 @@ class EmailSender(NotificationSender):
             logger.debug("正在登录...")
             server.login(sender, auth)
             logger.debug("正在发送邮件...")
+            logger.debug(f"收件人列表: {[receiver]}")
+            logger.debug(f"邮件内容: {msg.as_string()[:500]}...")
             server.sendmail(sender, [receiver], msg.as_string())
             server.quit()
             logger.info(f"✅ 邮件发送成功: {subject}")
@@ -118,6 +128,7 @@ def send_notification(sender_name, subject, content):
 
 def send_grade_mail(changed):
     logger.info(f"准备发送成绩更新邮件，变化数: {len(changed)}")
+    logger.debug(f"变化详情: {changed}")
     rows = "".join(
         f"<tr><td>{k}</td><td>{v}</td></tr>"
         for k, v in changed.items()
@@ -129,12 +140,14 @@ def send_grade_mail(changed):
       {rows}
     </table>
     """
+    logger.debug(f"HTML内容预览: {html[:200]}...")
     send_notification("email", "成绩有更新", html)
 
 
 def send_all_grades(grades):
     """发送全部成绩"""
     logger.info(f"准备发送全部成绩，课程数: {len(grades)}")
+    logger.debug(f"成绩详情: {[{'课程名称': g['课程名称'], '成绩': g['成绩']} for g in grades[:3]]}... (显示前3条)")
     rows = "".join(
         f"<tr><td>{g['课程名称']}</td><td>{g['成绩']}</td><td>{g['学期']}</td></tr>"
         for g in grades
@@ -146,11 +159,13 @@ def send_all_grades(grades):
       {rows}
     </table>
     """
+    logger.debug(f"HTML内容预览: {html[:200]}...")
     send_notification("email", "全部成绩", html)
 
 
 def send_schedule_mail(courses, week, weekday):
     logger.info(f"准备发送课表邮件，第{week}周 周{weekday}，课程数: {len(courses)}")
+    logger.debug(f"课程详情: {[{'课程名称': c['课程名称'], '开始小节': c['开始小节'], '结束小节': c['结束小节'], '教室': c['教室']} for c in courses]}")
     rows = "".join(
         f"<tr><td>{c['课程名称']}</td><td>{c['开始小节']}-{c['结束小节']}</td><td>{c['教室']}</td></tr>"
         for c in courses
@@ -162,12 +177,14 @@ def send_schedule_mail(courses, week, weekday):
       {rows}
     </table>
     """
+    logger.debug(f"HTML内容预览: {html[:200]}...")
     send_notification("email", "明日课表提醒", html)
 
 
 def send_today_schedule(courses, week, weekday):
     """发送当天课表"""
     logger.info(f"准备发送今日课表，第{week}周 周{weekday}，课程数: {len(courses)}")
+    logger.debug(f"课程详情: {[{'课程名称': c['课程名称'], '开始小节': c['开始小节'], '结束小节': c['结束小节'], '教室': c['教室']} for c in courses]}")
     rows = "".join(
         f"<tr><td>{c['课程名称']}</td><td>{c['开始小节']}-{c['结束小节']}</td><td>{c['教室']}</td></tr>"
         for c in courses
@@ -179,12 +196,14 @@ def send_today_schedule(courses, week, weekday):
       {rows}
     </table>
     """
+    logger.debug(f"HTML内容预览: {html[:200]}...")
     send_notification("email", "今日课表", html)
 
 
 def send_full_schedule(courses, week_count):
     """发送本学期全部课表"""
     logger.info(f"准备发送全部课表，总周数: {week_count}")
+    logger.debug(f"课程总数: {sum(len(day_courses) for day_courses in courses) if courses else 0}")
     rows = []
     for day_courses in courses:
         for course in day_courses:
@@ -197,4 +216,5 @@ def send_full_schedule(courses, week_count):
       {''.join(rows)}
     </table>
     """
+    logger.debug(f"HTML内容预览: {html[:200]}...")
     send_notification("email", "本学期完整课表", html)
