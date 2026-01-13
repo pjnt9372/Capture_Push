@@ -455,17 +455,39 @@ void ExecuteConfigGui() {
 // 用记事本打开配置文件
 void EditConfigFile() {
     LOG_INFO("打开配置文件编辑器");
-    std::string exe_dir = GetExecutableDirectory();
-    std::string config_path = exe_dir + "\\config.ini";
+    
+    // 优先从 AppData 目录打开配置文件
+    char appdata_path[MAX_PATH];
+    std::string config_path;
+    
+    if (SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, appdata_path) == S_OK) {
+        std::string appdata_config_dir = std::string(appdata_path) + "\\GradeTracker";
+        config_path = appdata_config_dir + "\\config.ini";
+        LOG_DEBUG("尝试打开 AppData 目录中的配置文件: " + config_path);
+        
+        // 检查 AppData 目录中的配置文件是否存在
+        DWORD config_attr = GetFileAttributesA(config_path.c_str());
+        if (config_attr == INVALID_FILE_ATTRIBUTES) {
+            LOG_WARNING("AppData 目录中未找到配置文件，回退到程序目录");
+            // 回退到程序目录
+            std::string exe_dir = GetExecutableDirectory();
+            config_path = exe_dir + "\\config.ini";
+        }
+    } else {
+        // 如果无法获取 AppData 目录，使用程序目录
+        std::string exe_dir = GetExecutableDirectory();
+        config_path = exe_dir + "\\config.ini";
+        LOG_WARNING("无法获取 AppData 目录，使用程序目录: " + config_path);
+    }
 
     DWORD config_attr = GetFileAttributesA(config_path.c_str());
     if (config_attr == INVALID_FILE_ATTRIBUTES) {
-        LOG_ERROR("配置文件不存在");
+        LOG_ERROR("配置文件不存在: " + config_path);
         MessageBoxA(NULL, "配置文件不存在！\n请先使用配置工具创建配置。", "错误", MB_OK | MB_ICONERROR);
         return;
     }
 
-    LOG_DEBUG("使用记事本打开: " + config_path);
+    LOG_INFO("使用记事本打开配置文件: " + config_path);
     // 使用 ShellExecuteA 打开记事本
     ShellExecuteA(NULL, "open", "notepad.exe", config_path.c_str(), NULL, SW_SHOW);
 }
