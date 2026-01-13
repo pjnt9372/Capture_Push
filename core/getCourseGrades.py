@@ -278,22 +278,34 @@ def fetch_grades(username, password, force_update=False):
 
 # ===== 12. 主程序入口 =====
 def main():
-    if RUN_MODE == 'DEV':
-        print("【开发模式】从 grade.html 读取成绩")
-        grades = fetch_grades("", "")
-    else:
-        username = input("请输入学号: ").strip()
-        password = input("请输入密码: ").strip()
-        if not username or not password:
-            print("❌ 学号或密码不能为空")
-            return
-        grades = fetch_grades(username, password)
+    """
+    主程序入口，从配置文件读取账号密码
+    支持 --force 参数强制从网络更新
+    """
+    import sys
+    force_update = '--force' in sys.argv
+    
+    # 从配置文件读取账号密码
+    config = configparser.ConfigParser()
+    config.read(CONFIG_PATH, encoding='utf-8')
+    username = config.get('account', 'username', fallback='')
+    password = config.get('account', 'password', fallback='')
+    
+    if not username or not password:
+        logger.error("配置文件中未设置账号或密码")
+        print("❌ 配置文件中未设置账号或密码，请先配置 [account] 节")
+        return
+    
+    logger.info(f"开始获取成绩（强制更新: {force_update}）")
+    grades = fetch_grades(username, password, force_update)
 
     if grades is not None:
         print_grades(grades)
         print("✅ 成绩解析完成")
+        logger.info("成绩解析完成")
     else:
         print("❌ 成绩获取或解析失败")
+        logger.error("成绩获取或解析失败")
 
 if __name__ == "__main__":
     main()
