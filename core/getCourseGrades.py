@@ -7,15 +7,19 @@ import configparser
 import os
 import json
 import time
+from pathlib import Path
 
 # 导入统一日志模块（AppData 目录）
-from log import init_logger, get_config_path
+from log import init_logger, get_config_path, get_log_file_path
 
 # 初始化日志（如果失败直接崩溃）
 logger = init_logger('getCourseGrades')
 
 # 获取配置文件路径（AppData 目录，如果失败直接崩溃）
 CONFIG_PATH = str(get_config_path())
+
+# 获取 AppData 工作目录（用于存放缓存文件）
+APPDATA_DIR = get_log_file_path('getCourseGrades').parent
 
 # ===== 2. 读取运行模式 =====
 def get_run_mode():
@@ -83,8 +87,10 @@ def login(username, password):
         logger.warning("检测到验证码，脚本无法处理")
     else:
         logger.error("登录失败，未知原因")
-        with open("login_failed_grade.html", "w", encoding="utf-8") as f:
+        failed_file = APPDATA_DIR / "login_failed_grade.html"
+        with open(failed_file, "w", encoding="utf-8") as f:
             f.write(response.text)
+        logger.debug(f"登录失败响应已保存到: {failed_file}")
     return None
 
 # ===== 5. 循环检测配置读取 =====
@@ -111,16 +117,16 @@ def should_update_grades():
         logger.info("循环检测未启用，将从网络获取最新成绩")
         return True
     
-    # 检查本地缓存文件是否存在
-    cache_file = "grade.html"
-    timestamp_file = "grade_timestamp.txt"
+    # 检查本地缓存文件是否存在（AppData 目录）
+    cache_file = APPDATA_DIR / "grade.html"
+    timestamp_file = APPDATA_DIR / "grade_timestamp.txt"
     
-    if not os.path.exists(cache_file):
+    if not cache_file.exists():
         logger.info("本地成绩缓存不存在，需要从网络获取")
         return True
     
     # 检查时间戳文件
-    if not os.path.exists(timestamp_file):
+    if not timestamp_file.exists():
         logger.info("时间戳文件不存在，需要从网络获取")
         return True
     
@@ -145,35 +151,37 @@ def should_update_grades():
 
 # ===== 7. 更新时间戳 =====
 def update_timestamp():
-    """更新成绩获取时间戳"""
-    timestamp_file = "grade_timestamp.txt"
+    """更新成绩获取时间戳（AppData 目录）"""
+    timestamp_file = APPDATA_DIR / "grade_timestamp.txt"
     try:
         with open(timestamp_file, "w", encoding="utf-8") as f:
             f.write(str(time.time()))
-        logger.info("时间戳已更新")
+        logger.info(f"时间戳已更新: {timestamp_file}")
     except Exception as e:
         logger.error(f"更新时间戳失败: {e}")
 
 # ===== 8. 获取成绩 HTML =====
 def get_grade_html(session, force_update=False):
-    """获取成绩HTML，支持循环检测"""
+    """获取成绩HTML，支持循环检测。所有文件存储在 AppData 目录。"""
+    cache_file = APPDATA_DIR / "grade.html"
+    
     if RUN_MODE == 'DEV':
-        logger.info("[DEV 模式] 从本地文件 'grade.html' 读取成绩数据")
+        logger.info(f"[DEV 模式] 从 AppData 文件读取成绩数据: {cache_file}")
         try:
-            with open("grade.html", "r", encoding="utf-8") as f:
+            with open(cache_file, "r", encoding="utf-8") as f:
                 return f.read()
         except FileNotFoundError:
-            logger.error("未找到 grade.html，请先在 BUILD 模式运行生成")
+            logger.error(f"未找到 {cache_file}，请先在 BUILD 模式运行生成")
             return None
         except Exception as e:
-            logger.error(f"读取 grade.html 失败: {e}")
+            logger.error(f"读取 {cache_file} 失败: {e}")
             return None
     
     # 检查是否需要更新
     if not force_update and not should_update_grades():
         logger.info("使用本地缓存的成绩数据")
         try:
-            with open("grade.html", "r", encoding="utf-8") as f:
+            with open(cache_file, "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             logger.warning(f"读取本地缓存失败: {e}，将从网络获取")
@@ -190,14 +198,17 @@ def get_grade_html(session, force_update=False):
 
     if "N122101QueryResult" in response.text or "kscj" in response.text:
         logger.info("成功获取成绩数据")
-        with open("grade.html", "w", encoding="utf-8") as f:
+        with open(cache_file, "w", encoding="utf-8") as f:
             f.write(response.text)
+        logger.debug(f"成绩数据已缓存到: {cache_file}")
         update_timestamp()  # 更新时间戳
         return response.text
     else:
         logger.error("未识别到有效成绩内容")
-        with open("grade_failed.html", "w", encoding="utf-8") as f:
+        failed_file = APPDATA_DIR / "grade_failed.html"
+        with open(failed_file, "w", encoding="utf-8") as f:
             f.write(response.text)
+        logger.debug(f"失败响应已保存到: {failed_file}")
         return None
 
 # ===== 9. 解析成绩 =====

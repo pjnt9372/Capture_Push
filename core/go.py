@@ -12,16 +12,18 @@ from core.getCourseSchedule import fetch_course_schedule
 from core.push import send_grade_mail, send_schedule_mail
 
 # 导入统一配置路径管理（AppData 目录）
-from core.log import get_config_path
+from core.log import get_config_path, get_log_file_path
 
 # 使用统一的配置路径管理（AppData 目录，如果失败直接崩溃）
 CONFIG_FILE = str(get_config_path())
 
-STATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state")
-os.makedirs(STATE_DIR, exist_ok=True)
+# 获取 AppData 目录（用于存放 state 文件）
+APPDATA_DIR = get_log_file_path('go').parent
+STATE_DIR = APPDATA_DIR / "state"
+STATE_DIR.mkdir(parents=True, exist_ok=True)
 
-GRADE_STATE_FILE = os.path.join(STATE_DIR, "last_grades.json")
-SCHEDULE_STATE_FILE = os.path.join(STATE_DIR, "last_schedule_day.txt")
+GRADE_STATE_FILE = STATE_DIR / "last_grades.json"
+SCHEDULE_STATE_FILE = STATE_DIR / "last_schedule_day.txt"
 
 
 # ---------- 配置 ----------
@@ -33,7 +35,7 @@ def load_config():
 
 # ---------- 成绩相关 ----------
 def load_last_grades():
-    if not os.path.exists(GRADE_STATE_FILE):
+    if not GRADE_STATE_FILE.exists():
         return {}
     with open(GRADE_STATE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -87,7 +89,7 @@ def fetch_and_push_grades(push=False, force_update=False):
 
 # ---------- 课表相关 ----------
 def load_last_schedule_day():
-    if not os.path.exists(SCHEDULE_STATE_FILE):
+    if not SCHEDULE_STATE_FILE.exists():
         return None
     with open(SCHEDULE_STATE_FILE, "r", encoding="utf-8") as f:
         return f.read().strip()
