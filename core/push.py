@@ -65,7 +65,19 @@ class EmailSender(NotificationSender):
 
         try:
             logger.debug(f"连接到 SMTP 服务器: {smtp}:{port}")
-            server = smtplib.SMTP_SSL(smtp, port)
+            
+            # 根据端口选择连接方式
+            if port == 465:
+                # 端口 465 使用 SMTP_SSL（隐式 SSL）
+                logger.debug("使用 SMTP_SSL 连接（端口 465）")
+                server = smtplib.SMTP_SSL(smtp, port)
+            else:
+                # 端口 587 或其他端口使用 SMTP + starttls（显式 TLS）
+                logger.debug(f"使用 SMTP + starttls 连接（端口 {port}）")
+                server = smtplib.SMTP(smtp, port)
+                logger.debug("开始 TLS 加密...")
+                server.starttls()
+            
             logger.debug("正在登录...")
             server.login(sender, auth)
             logger.debug("正在发送邮件...")
