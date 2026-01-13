@@ -84,6 +84,7 @@ void ExecuteConfigGui();
 void EditConfigFile();
 void InitializeLog();
 void EnsureAppDataDirectory();
+void DeployConfigFile();
 void ReadLoopConfig();
 int GetMinLoopInterval();
 void ExecuteLoopCheck();
@@ -105,6 +106,46 @@ void EnsureAppDataDirectory() {
         }
     } else {
         LOG_WARNING("无法获取 AppData 目录路径");
+    }
+}
+
+// 释放配置文件到 AppData 目录
+void DeployConfigFile() {
+    char appdata_path[MAX_PATH];
+    if (SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, appdata_path) == S_OK) {
+        std::string appdata_dir = std::string(appdata_path) + "\\GradeTracker";
+        std::string appdata_config_path = appdata_dir + "\\config.ini";
+        
+        // 检查 AppData 目录中是否已有配置文件
+        std::ifstream appdata_config_file(appdata_config_path);
+        if (appdata_config_file.is_open()) {
+            appdata_config_file.close();
+            LOG_INFO("AppData 目录中已存在配置文件: " + appdata_config_path);
+            return; // 配置文件已存在，无需释放
+        }
+        
+        // 从程序目录获取原始配置文件
+        std::string exe_dir = GetExecutableDirectory();
+        std::string original_config_path = exe_dir + "\\config.ini";
+        
+        LOG_INFO("正在释放配置文件到 AppData 目录: " + original_config_path + " -> " + appdata_config_path);
+        
+        // 尝试复制配置文件
+        std::ifstream src(original_config_path, std::ios::binary);
+        std::ofstream dst(appdata_config_path, std::ios::binary);
+        
+        if (src.is_open() && dst.is_open()) {
+            dst << src.rdbuf();
+            src.close();
+            dst.close();
+            LOG_INFO("配置文件已成功释放到 AppData 目录: " + appdata_config_path);
+        } else {
+            LOG_WARNING("无法释放配置文件到 AppData 目录");
+            if (src.is_open()) src.close();
+            if (dst.is_open()) dst.close();
+        }
+    } else {
+        LOG_WARNING("无法获取 AppData 目录路径，无法释放配置文件");
     }
 }
 
@@ -572,6 +613,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // 确保 AppData 目录存在
     EnsureAppDataDirectory();
+    
+    // 释放配置文件到 AppData 目录
+    DeployConfigFile();
     
     LOG_INFO("========== 应用程序开始启动 ==========");
     
