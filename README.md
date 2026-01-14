@@ -29,24 +29,19 @@ Capture_Push 是一个课程成绩和课表自动追踪推送系统，能够自�
 
 ## 技术特性
 
-### 1. 重构优化
-- **移除无意义加密**：移除了不必要的 `crypto_util.py` 加密工具
-- **模块重命名**：将 `mailer` 模块重命名为更具意义的 `push` 模块
-- **代码优化**：模块化设计，提高代码可维护性
-
-### 2. 日志系统
+### 1. 日志系统
 - **Python 日志**：所有 Python 模块包含完整的日志记录
 - **C++ 日志**：托盘程序包含完整的日志记录
 - **路径处理**：打包后自动使用用户可写目录存储日志
 - **日志级别**：支持 INFO、DEBUG、ERROR、WARNING 等多个级别
 
-### 3. 依赖管理
+### 2. 依赖管理
 - **uv 支持**：现代化依赖管理工具支持
 - **requirements.txt**：标准依赖文件支持
 - **虚拟环境**：完整的虚拟环境管理
 - **PyInstaller**：打包工具集成
 
-### 4. 配置管理
+### 3. 配置管理
 - **配置文件**：支持 `config.ini` 配置文件
 - **运行模式**：支持 DEV（开发）和 BUILD（生产）两种模式
 - **灵活配置**：支持账户、邮箱、循环检测等多种配置
@@ -109,25 +104,4 @@ pip install -r requirements.txt
 ## 日志文件位置
 
 打包后程序的日志文件存储在：
-- `%LOCALAPPDATA%\GradeTracker\tray_app.log` - 托盘程序日志
-- `%LOCALAPPDATA%\GradeTracker\push.log` - 推送模块日志  
-- `%LOCALAPPDATA%\GradeTracker\getCourseGrades.log` - 成绩获取日志
-- `%LOCALAPPDATA%\GradeTracker\getCourseSchedule.log` - 课表获取日志
-
-## 项目优势
-
-1. **高可维护性**：模块化设计，清晰的代码结构
-2. **完善的日志**：全面的日志记录，便于调试和监控
-3. **灵活配置**：支持多种运行模式和自定义配置
-4. **稳定可靠**：错误处理完善，异常恢复机制
-5. **用户友好**：托盘程序，后台运行，操作便捷
-
-## 技术栈
-
-- **Python**：主要开发语言
-- **PySide6**：GUI 界面
-- **requests**：HTTP 请求
-- **BeautifulSoup**：HTML 解析
-- **C++**：系统托盘程序
-- **PyInstaller**：程序打包
-- **Inno Setup**：安装程序制作
+- `%LOCALAPPDATA%\GradeTracker` 
