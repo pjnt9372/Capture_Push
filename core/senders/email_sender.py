@@ -47,13 +47,13 @@ def load_mail_config():
 class EmailSender:
     """邮件推送实现"""
     
-    def send(self, subject, html_content):
+    def send(self, subject, content):
         """
         发送邮件
         
         Args:
             subject: 邮件主题
-            html_content: HTML格式的邮件内容
+            content: 邮件内容（纯文本）
             
         Returns:
             bool: 发送是否成功
@@ -95,9 +95,9 @@ class EmailSender:
         msg["To"] = receiver
         msg["Subject"] = Header(subject, "utf-8")
 
-        msg.attach(MIMEText(html_content, "html", "utf-8"))
+        msg.attach(MIMEText(content, "plain", "utf-8"))
         
-        logger.debug(f"邮件消息构建完成，HTML长度: {len(html_content)}")
+        logger.debug(f"邮件消息构建完成，文本长度: {len(content)}")
 
         try:
             logger.debug(f"连接到 SMTP 服务器: {smtp}:{port}")

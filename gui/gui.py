@@ -149,21 +149,12 @@ class ConfigWindow(QWidget):
         self.push_email_radio = QRadioButton("邮件推送")
         self.push_button_group.addButton(self.push_email_radio, 1)
         push_layout.addWidget(self.push_email_radio)
-        
-        # TEST1 推送方式（未来可扩展的推送方式示例）
-        self.push_test1_radio = QRadioButton("TEST1推送")
-        self.push_button_group.addButton(self.push_test1_radio, 2)
-        push_layout.addWidget(self.push_test1_radio)
-        
-        # 未来可扩展的推送方式（先注释）
-        # self.push_wechat_radio = QRadioButton("微信推送")
-        # self.push_button_group.addButton(self.push_wechat_radio, 3)
-        # push_layout.addWidget(self.push_wechat_radio)
-        
-        # self.push_dingtalk_radio = QRadioButton("钉钉推送")
-        # self.push_button_group.addButton(self.push_dingtalk_radio, 4)
-        # push_layout.addWidget(self.push_dingtalk_radio)
 
+        # 飞书推送
+        self.push_feishu_radio = QRadioButton("飞书机器人推送")
+        self.push_button_group.addButton(self.push_feishu_radio, 3)
+        push_layout.addWidget(self.push_feishu_radio)
+        
         # 添加提示信息
         push_hint = QLabel(
             "提示: 只能同时启用一种推送方式。"
@@ -194,42 +185,17 @@ class ConfigWindow(QWidget):
         email_group.setLayout(email_form)
         layout.addWidget(email_group)
 
-        # TEST1 推送配置区域
-        test1_group = QGroupBox("TEST1推送配置")
-        test1_form = QFormLayout()
+        # 飞书推送配置区域
+        feishu_group = QGroupBox("飞书机器人配置")
+        feishu_form = QFormLayout()
         
-        self.test1_param1 = QLineEdit()
-        self.test1_param2 = QLineEdit()
-        self.test1_param3 = QLineEdit()
-        self.test1_param3.setEchoMode(QLineEdit.Password)
+        self.feishu_webhook = QLineEdit()
+        self.feishu_webhook.setPlaceholderText("https://open.feishu.cn/open-apis/bot/v2/hook/****")
         
-        test1_form.addRow("参数1", self.test1_param1)
-        test1_form.addRow("参数2", self.test1_param2)
-        test1_form.addRow("密钥/Token", self.test1_param3)
+        feishu_form.addRow("Webhook地址", self.feishu_webhook)
         
-        # 添加测试按钮
-        test1_test_layout = QHBoxLayout()
-        test1_test_btn = QPushButton("发送测试推送")
-        test1_test_btn.clicked.connect(self.send_test_push)
-        test1_test_layout.addWidget(test1_test_btn)
-        
-        self.test1_status = QLabel("状态: 就绪")
-        self.test1_status.setStyleSheet("color: gray;")
-        test1_test_layout.addWidget(self.test1_status)
-        test1_test_layout.addStretch()
-        
-        test1_layout_full = QVBoxLayout()
-        test1_layout_full.addLayout(test1_form)
-        test1_layout_full.addLayout(test1_test_layout)
-        
-        test1_hint = QLabel(
-            "提示: TEST1 是预留的推送方式接口，可用于测试新的推送实现。"
-        )
-        test1_hint.setStyleSheet("color: gray; font-size: 10px;")
-        test1_layout_full.addWidget(test1_hint)
-        
-        test1_group.setLayout(test1_layout_full)
-        layout.addWidget(test1_group)
+        feishu_group.setLayout(feishu_form)
+        layout.addWidget(feishu_group)
         
         layout.addStretch()
         tab.setLayout(layout)
@@ -314,6 +280,8 @@ class ConfigWindow(QWidget):
             self.push_email_radio.setChecked(True)
         elif push_method == "test1":
             self.push_test1_radio.setChecked(True)
+        elif push_method == "feishu":
+            self.push_feishu_radio.setChecked(True)
         # 未来可扩展其他推送方式的加载
         # elif push_method == "wechat":
         #     self.push_wechat_radio.setChecked(True)
@@ -323,10 +291,8 @@ class ConfigWindow(QWidget):
             # 默认不启用
             self.push_none_radio.setChecked(True)
 
-        # 加载 TEST1 配置
-        self.test1_param1.setText(self.cfg.get("test1", "param1", fallback=""))
-        self.test1_param2.setText(self.cfg.get("test1", "param2", fallback=""))
-        self.test1_param3.setText(self.cfg.get("test1", "param3", fallback=""))
+        # 加载飞书配置
+        self.feishu_webhook.setText(self.cfg.get("feishu", "webhook_url", fallback=""))
 
     def save_config(self):
         # 保存账号配置
@@ -370,8 +336,8 @@ class ConfigWindow(QWidget):
             self.cfg["push"]["method"] = "none"
         elif self.push_email_radio.isChecked():
             self.cfg["push"]["method"] = "email"
-        elif self.push_test1_radio.isChecked():
-            self.cfg["push"]["method"] = "test1"
+        elif self.push_feishu_radio.isChecked():
+            self.cfg["push"]["method"] = "feishu"
         # 未来可扩展其他推送方式的保存
         # elif self.push_wechat_radio.isChecked():
         #     self.cfg["push"]["method"] = "wechat"
@@ -408,12 +374,10 @@ class ConfigWindow(QWidget):
         self.cfg["email"]["receiver"] = self.receiver.text()
         self.cfg["email"]["auth"] = self.auth.text()
 
-        # 保存 TEST1 配置
-        if "test1" not in self.cfg:
-            self.cfg["test1"] = {}
-        self.cfg["test1"]["param1"] = self.test1_param1.text()
-        self.cfg["test1"]["param2"] = self.test1_param2.text()
-        self.cfg["test1"]["param3"] = self.test1_param3.text()
+        # 保存飞书配置
+        if "feishu" not in self.cfg:
+            self.cfg["feishu"] = {}
+        self.cfg["feishu"]["webhook_url"] = self.feishu_webhook.text()
 
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             self.cfg.write(f)
