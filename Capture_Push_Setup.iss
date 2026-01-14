@@ -2,7 +2,6 @@
 ; Capture_Push 安装脚本（内置Python环境，无需系统Python）
 
 [Setup]
-<<<<<<< HEAD:Capture_Push_Setup.iss
 AppName=Capture_Push
 AppVersion=0.1.1_Beta
 AppPublisher=pjnt9372
