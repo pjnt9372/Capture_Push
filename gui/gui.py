@@ -380,6 +380,25 @@ class ConfigWindow(QWidget):
         else:
             self.cfg["push"]["method"] = "none"
 
+        # 检测 Outlook 邮箱并警告
+        sender_email = self.sender.text().strip().lower()
+        outlook_domains = ["outlook.com", "outlook.cn", "outlook.com.cn", "hotmail.com", "live.com"]
+        
+        if any(sender_email.endswith(domain) for domain in outlook_domains):
+            reply = QMessageBox.question(
+                self, 
+                "Outlook 邮箱警告", 
+                f"您输入的发件邮箱 '{sender_email}' 是 Outlook/Hotmail 邮箱。\n\n"
+                f"Microsoft 已禁用对这些邮箱的基本认证，仅支持 OAuth2，\n"
+                f"因此无法使用此程序发送邮件。\n\n"
+                f"是否仍要保存此配置？\n\n"
+                f"（建议更换其他邮箱服务商，如 QQ、163、Gmail 等）",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return  # 取消保存
+
         # 保存邮件配置
         if "email" not in self.cfg:
             self.cfg["email"] = {}

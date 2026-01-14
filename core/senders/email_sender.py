@@ -75,6 +75,15 @@ class EmailSender:
         
         logger.debug(f"SMTP服务器: {smtp}:{port}, 发件人: {sender}, 收件人: {receiver}")
         
+        # 检测 Outlook 邮箱并拒绝发送
+        outlook_domains = ["outlook.com", "outlook.cn", "outlook.com.cn", "hotmail.com", "live.com"]
+        if any(sender.lower().endswith(domain) for domain in outlook_domains):
+            logger.error(f"Outlook/Hotmail 邮箱不支持基本认证: {sender}")
+            print(f"❌ Outlook/Hotmail 邮箱不支持基本认证")
+            print(f"💡 原因: Microsoft 已禁用对这些邮箱的基本认证，仅支持 OAuth2")
+            print(f"💡 解决方案: 请更换其他邮箱服务商（如 QQ、163、Gmail 等）")
+            return False
+
         # 验证配置是否为空
         if not all([smtp, port, sender, receiver, auth]):
             logger.error(f"邮件配置验证失败: smtp='{smtp}', port='{port}', sender='{sender}', receiver='{receiver}', auth='{'*' * len(auth) if auth else ''}'")

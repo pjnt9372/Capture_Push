@@ -17,44 +17,36 @@ if not grade_tracker_dir.exists():
 else:
     print(f"✅ 文件夹已存在: {grade_tracker_dir}")
 
-# 定义 config.ini 的完整内容（使用三重引号保留格式和注释）
-config_content = """[logging]
-level= DEBUG
+# 从项目根目录复制配置文件模板
+import configparser
+from pathlib import Path
 
-[run_model]
-model= DEV
+# 获取项目根目录的 config.ini 文件
+source_config_file = Path(__file__).parent.parent / "config.ini"
 
-; ===== 账号配置 =====
-[account]
-username=
-password=
+if not source_config_file.exists():
+    print(f"❌ 找不到源配置文件: {source_config_file}")
+    print("💡 请确保此脚本在项目 developer_tools 目录中运行")
+    exit(1)
 
-; ===== 学期配置 =====
-[semester]
-first_monday=2026-02-24
+# 读取源配置文件
+config = configparser.ConfigParser()
+config.read(str(source_config_file), encoding='utf-8')
 
-; ===== 循环检测配置 =====
-[loop_getCourseGrades]
-enabled=False
-time=3600
+# 修改 [logging] 部分
+if 'logging' not in config:
+    config['logging'] = {}
+config['logging']['level'] = 'DEBUG'
 
-[loop_getCourseSchedule]
-enabled=False
-time=3600
-
-; ===== 邮件推送配置 =====
-[email]
-smtp=smtp.example.com
-port=465
-sender=your_email@example.com
-receiver=target_email@example.com
-auth=your_email_password_or_auth_code
-"""
+# 修改 [run_model] 部分
+if 'run_model' not in config:
+    config['run_model'] = {}
+config['run_model']['model'] = 'DEV'
 
 # 写入配置文件（UTF-8 无 BOM）
 print(f"📝 写入配置文件: {config_file}")
 with open(config_file, 'w', encoding='utf-8') as f:
-    f.write(config_content)
+    config.write(f)
 
 print("✅ GradeTracker 配置文件初始化完成！")
 print("💡 请手动编辑 config.ini，填写 username、password 和邮箱认证信息。")
