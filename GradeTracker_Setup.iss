@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=学业助手
-AppVersion=0.1.0DEV
+AppVersion=0.1.0_Beta
 AppPublisher=pjnt9372
 DefaultDirName={autopf}\GradeTracker
 DefaultGroupName=学业助手
