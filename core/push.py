@@ -88,12 +88,12 @@ class NotificationManager:
         except Exception as e:
             logger.warning(f"注册邮件发送器失败: {e}")
         
-        # 未来可以在这里注册其他发送器
-        # try:
-        #     from senders.wechat_sender import WeChatSender
-        #     self.register_sender("wechat", WeChatSender())
-        # except ImportError:
-        #     logger.debug("微信发送器未安装")
+        # 注册飞书推送
+        try:
+            from senders.feishu_sender import FeishuSender
+            self.register_sender("feishu", FeishuSender())
+        except Exception as e:
+            logger.warning(f"注册飞书发送器失败: {e}")
     
     def register_sender(self, name, sender):
         """注册新的推送方式"""
@@ -183,63 +183,54 @@ def send_notification(sender_name, subject, content):
 
 def format_grade_changes(changed):
     """
-    格式化成绩变化消息
+    格式化成绩变化消息（纯文本）
     
     Args:
         changed: 字典，key为课程名称，value为变化描述
         
     Returns:
-        str: HTML格式的消息内容
+        str: 纯文本格式的消息内容
     """
     logger.info(f"格式化成绩变化消息，变化数: {len(changed)}")
-    logger.debug(f"变化详情: {changed}")
     
-    rows = "".join(
-        f"<tr><td>{k}</td><td>{v}</td></tr>"
-        for k, v in changed.items()
-    )
-    html = f"""
-    <h3>📈 成绩更新提醒</h3>
-    <table border="1" cellspacing="0" cellpadding="6">
-      <tr><th>课程</th><th>变化</th></tr>
-      {rows}
-    </table>
-    """
-    logger.debug(f"HTML内容预览: {html[:200]}...")
-    return html
+    lines = ["📈 成绩更新提醒", "-" * 20]
+    for k, v in changed.items():
+        lines.append(f"课程: {k}")
+        lines.append(f"变化: {v}")
+        lines.append("-" * 10)
+    
+    content = "\n".join(lines)
+    logger.debug(f"文本内容预览: {content[:200]}...")
+    return content
 
 
 def format_all_grades(grades):
     """
-    格式化全部成绩消息
+    格式化全部成绩消息（纯文本）
     
     Args:
         grades: 成绩列表，每项包含课程名称、成绩、学分、课程属性、学期
         
     Returns:
-        str: HTML格式的消息内容
+        str: 纯文本格式的消息内容
     """
     logger.info(f"格式化全部成绩消息，课程数: {len(grades)}")
-    logger.debug(f"成绩详情: {[{'课程名称': g['课程名称'], '成绩': g['成绩'], '学分': g['学分'], '课程属性': g['课程属性']} for g in grades[:3]]}... (显示前3条)")
     
-    rows = "".join(
-        f"<tr><td>{g['课程名称']}</td><td>{g['成绩']}</td><td>{g['学分']}</td><td>{g['课程属性']}</td><td>{g['学期']}</td></tr>"
-        for g in grades
-    )
-    html = f"""
-    <h3>📊 全部成绩列表</h3>
-    <table border="1" cellspacing="0" cellpadding="6">
-      <tr><th>课程名称</th><th>成绩</th><th>学分</th><th>课程属性</th><th>学期</th></tr>
-      {rows}
-    </table>
-    """
-    logger.debug(f"HTML内容预览: {html[:200]}...")
-    return html
+    lines = ["📊 全部成绩列表", "=" * 20]
+    for g in grades:
+        lines.append(f"课程: {g['课程名称']}")
+        lines.append(f"成绩: {g['成绩']} | 学分: {g['学分']}")
+        lines.append(f"属性: {g['课程属性']} | 学期: {g['学期']}")
+        lines.append("-" * 15)
+    
+    content = "\n".join(lines)
+    logger.debug(f"文本内容预览: {content[:200]}...")
+    return content
 
 
 def format_schedule(courses, week, weekday, title="课表"):
     """
-    格式化课表消息
+    格式化课表消息（纯文本）
     
     Args:
         courses: 课程列表，每项包含课程名称、开始小节、结束小节、教室
@@ -248,83 +239,80 @@ def format_schedule(courses, week, weekday, title="课表"):
         title: 标题前缀
         
     Returns:
-        str: HTML格式的消息内容
+        str: 纯文本格式的消息内容
     """
     logger.info(f"格式化课表消息，第{week}周 周{weekday}，课程数: {len(courses)}")
-    logger.debug(f"课程详情: {[{'课程名称': c['课程名称'], '开始小节': c['开始小节'], '结束小节': c['结束小节'], '教室': c['教室']} for c in courses]}")
     
-    rows = "".join(
-        f"<tr><td>{c['课程名称']}</td><td>{c['开始小节']}-{c['结束小节']}</td><td>{c['教室']}</td></tr>"
-        for c in courses
-    )
-    html = f"""
-    <h3>📚 第 {week} 周 · {title}（周{weekday}）</h3>
-    <table border="1" cellspacing="0" cellpadding="6">
-      <tr><th>课程</th><th>节次</th><th>教室</th></tr>
-      {rows}
-    </table>
-    """
-    logger.debug(f"HTML内容预览: {html[:200]}...")
-    return html
+    lines = [f"📚 第 {week} 周 · {title}（周{weekday}）", "=" * 25]
+    if not courses:
+        lines.append("今天没有课哦，好好休息吧！")
+    else:
+        for c in courses:
+            lines.append(f"课程: {c['课程名称']}")
+            lines.append(f"节次: {c['开始小节']}-{c['结束小节']} 节")
+            lines.append(f"教室: {c['教室']}")
+            lines.append("-" * 15)
+    
+    content = "\n".join(lines)
+    logger.debug(f"文本内容预览: {content[:200]}...")
+    return content
 
 
 def format_full_schedule(courses, week_count):
     """
-    格式化完整学期课表消息
+    格式化完整学期课表消息（纯文本）
     
     Args:
         courses: 课程列表（按天分组）
         week_count: 总周数
         
     Returns:
-        str: HTML格式的消息内容
+        str: 纯文本格式的消息内容
     """
     logger.info(f"格式化完整课表消息，总周数: {week_count}")
-    logger.debug(f"课程总数: {sum(len(day_courses) for day_courses in courses) if courses else 0}")
     
-    rows = []
+    lines = [f"📖 本学期完整课表（共{week_count}周）", "=" * 25]
     for day_courses in courses:
+        if not day_courses:
+            continue
+        # 假设 day_courses 中的课程星期相同
+        weekday = day_courses[0]['星期']
+        lines.append(f"\n【周{weekday}】")
         for course in day_courses:
-            rows.append(f"<tr><td>{course['课程名称']}</td><td>周{course['星期']}</td><td>{course['开始小节']}-{course['结束小节']}</td><td>{course['教室']}</td></tr>")
+            lines.append(f"- {course['课程名称']} ({course['开始小节']}-{course['结束小节']}节) @ {course['教室']}")
     
-    html = f"""
-    <h3>📖 本学期完整课表（共{week_count}周）</h3>
-    <table border="1" cellspacing="0" cellpadding="6">
-      <tr><th>课程名称</th><th>星期</th><th>节次</th><th>教室</th></tr>
-      {''.join(rows)}
-    </table>
-    """
-    logger.debug(f"HTML内容预览: {html[:200]}...")
-    return html
+    content = "\n".join(lines)
+    logger.debug(f"文本内容预览: {content[:200]}...")
+    return content
 
 
 # ==================== 便捷发送函数（邮件） ====================
 
 def send_grade_mail(changed):
-    """发送成绩变化邮件（使用配置的推送方式）"""
-    html = format_grade_changes(changed)
-    return notification_manager.send_with_active_sender("成绩有更新", html)
+    """发送成绩变化通知"""
+    text = format_grade_changes(changed)
+    return notification_manager.send_with_active_sender("成绩有更新", text)
 
 
 def send_all_grades_mail(grades):
-    """发送全部成绩邮件（使用配置的推送方式）"""
-    html = format_all_grades(grades)
-    return notification_manager.send_with_active_sender("全部成绩", html)
+    """发送全部成绩通知"""
+    text = format_all_grades(grades)
+    return notification_manager.send_with_active_sender("全部成绩", text)
 
 
 def send_schedule_mail(courses, week, weekday):
-    """发送明日课表邮件（使用配置的推送方式）"""
-    html = format_schedule(courses, week, weekday, "明日课表")
-    return notification_manager.send_with_active_sender("明日课表提醒", html)
+    """发送明日课表通知"""
+    text = format_schedule(courses, week, weekday, "明日课表")
+    return notification_manager.send_with_active_sender("明日课表提醒", text)
 
 
 def send_today_schedule_mail(courses, week, weekday):
-    """发送今日课表邮件（使用配置的推送方式）"""
-    html = format_schedule(courses, week, weekday, "今日课表")
-    return notification_manager.send_with_active_sender("今日课表", html)
+    """发送今日课表通知"""
+    text = format_schedule(courses, week, weekday, "今日课表")
+    return notification_manager.send_with_active_sender("今日课表", text)
 
 
 def send_full_schedule_mail(courses, week_count):
-    """发送完整学期课表邮件（使用配置的推送方式）"""
-    html = format_full_schedule(courses, week_count)
-    return notification_manager.send_with_active_sender("本学期完整课表", html)
+    """发送完整学期课表通知"""
+    text = format_full_schedule(courses, week_count)
+    return notification_manager.send_with_active_sender("本学期完整课表", text)

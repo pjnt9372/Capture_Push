@@ -60,14 +60,14 @@ jobs:
 
       - name: Build Installer with Inno Setup
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" GradeTracker_Setup.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Capture_Push_Setup.iss
         shell: powershell
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GradeTracker-Setup
-          path: Output/GradeTracker_Setup.exe
+          name: Capture_Push-Setup
+          path: Output/Capture_Push_Setup.exe
 
       - name: Extract Version from ISS
         shell: powershell
