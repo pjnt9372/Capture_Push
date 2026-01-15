@@ -25,6 +25,7 @@ tray/build/
 *.exe
 *.dll
 *.lib
-/build/GradeTracker_Installer/Analysis-00.toc
-/GradeTracker_Installer.spec
+/build/Capture_Push_Installer/Analysis-00.toc
+/Capture_Push_Installer.spec
 /do.md
+/build/GradeTracker_Installer/Analysis-00.toc

@@ -514,7 +514,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 【调试选项】如需启用控制台输出，取消下面几行的注释
     /*
     SetConsoleOutputCP(CP_UTF8);
-    std::cout << "=== GradeTracker Tray App (Debug Mode) ===" << std::endl;
+    std::cout << "=== Capture_Push Tray App (Debug Mode) ===" << std::endl;
     std::cout << "Console logging enabled for debugging." << std::endl;
     */
     
