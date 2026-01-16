@@ -62,7 +62,7 @@ Capture_Push/
 ├── installer.py           # 安装脚本
 ├── build_installer_exe.py # 打包脚本
 ├── config.ini             # 配置文件
-└── GradeTracker_Setup.iss # Inno Setup 配置
+└── Capture_Push_Setup.iss # Inno Setup 配置
 ```
 
 ## 安装与使用

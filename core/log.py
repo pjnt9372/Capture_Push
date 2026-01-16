@@ -6,6 +6,7 @@
 """
 import logging
 import logging.config
+import logging.handlers
 import sys
 import os
 import configparser
@@ -28,7 +29,7 @@ def get_config_path():
     if not localappdata:
         raise RuntimeError("无法获取 LOCALAPPDATA 环境变量")
     
-    config_path = Path(localappdata) / 'GradeTracker' / 'config.ini'
+    config_path = Path(localappdata) / 'Capture_Push' / 'config.ini'
     
     # 配置文件必须存在
     if not config_path.exists():
@@ -54,7 +55,7 @@ def get_log_file_path(module_name):
     if not localappdata:
         raise RuntimeError("无法获取 LOCALAPPDATA 环境变量")
     
-    appdata_dir = Path(localappdata) / 'GradeTracker'
+    appdata_dir = Path(localappdata) / 'Capture_Push'
     
     # 确保目录存在
     appdata_dir.mkdir(parents=True, exist_ok=True)
@@ -105,7 +106,13 @@ def init_logger(module_name):
     root_logger.addHandler(console_handler)
     
     # 添加新的文件处理器到 AppData 目录（强制 UTF-8 编码）
-    file_handler = logging.FileHandler(str(log_file_path), encoding='utf-8', mode='a')
+    # 使用 RotatingFileHandler 限制单个日志文件大小为 1MB，最多保留 5 个备份文件
+    file_handler = logging.handlers.RotatingFileHandler(
+        str(log_file_path), 
+        maxBytes=1024*1024,  # 1MB
+        backupCount=5,      # 最多保留 5 个备份文件
+        encoding='utf-8'
+    )
     file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(funcName)s - %(message)s')
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(log_level)
