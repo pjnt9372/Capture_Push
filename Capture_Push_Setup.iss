@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=Capture_Push
-AppVersion=0.1.1
+AppVersion=0.2.0_Dev
 AppPublisher=pjnt9372
 DefaultDirName={autopf}\Capture_Push
 DefaultGroupName=Capture_Push
@@ -21,6 +21,9 @@ UninstallDisplayIcon={app}\Capture_Push_tray.exe
 Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"
 
 [Files]
+; Python 3.11.9 安装包（需提前下载到项目根目录）
+Source: "python-3.11.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
 ; 环境安装器（PyInstaller 打包的独立 exe）- 使用低压缩级别避免内存溢出
 Source: "dist\Capture_Push_Installer.exe"; DestDir: "{app}"; Flags: ignoreversion solidbreak
 
@@ -61,10 +64,13 @@ Root: HKLM; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "Inst
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-; 运行环境安装器（命令行模式，自动检测地区并选择镜像）
-Filename: "{app}\Capture_Push_Installer.exe"; Parameters: """{app}"""; StatusMsg: "正在配置Python环境..."; Flags: waituntilterminated
+; 1. 先安装 Python 到软件目录（静默安装，避免环境污染）
+Filename: "{tmp}\python-3.11.9-amd64.exe"; Parameters: "/quiet InstallAllUsers=0 TargetDir=""{app}\python"" PrependPath=0 Include_test=0 Include_tcltk=0"; StatusMsg: "正在安装 Python 3.11.9 到软件目录..."; Flags: waituntilterminated
 
-; 生成配置文件
+; 2. 运行环境安装器创建虚拟环境（命令行模式，自动检测地区并选择镜像）
+Filename: "{app}\Capture_Push_Installer.exe"; Parameters: """{app}"""; StatusMsg: "正在配置虚拟环境..."; Flags: waituntilterminated
+
+; 3. 生成配置文件
 Filename: "{app}\.venv\Scripts\python.exe"; Parameters: """{app}\generate_config.py"" ""{app}"""; StatusMsg: "正在生成配置信息..."; Flags: runhidden waituntilterminated
 
 ; 安装后选项
@@ -73,6 +79,7 @@ Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui\gui.py""";
 
 [UninstallDelete]
 ; 清理程序目录
+Type: filesandordirs; Name: "{app}\python"
 Type: filesandordirs; Name: "{app}\.venv"
 Type: files; Name: "{app}\install_config.txt"
 Type: files; Name: "{app}\app.log"
@@ -90,10 +97,11 @@ begin
   
   // 显示欢迎信息
   MsgBox('Capture_Push 安装程序' + #13#10 + #13#10 + 
-         '✓ 内置Python环境：已就绪' + #13#10 +
-         '✓ 安装大小：约 1200 MB' + #13#10 +
-         '✓ 无需系统Python' + #13#10 + #13#10 + 
-         '点击“下一步”继续安装', 
+         '✓ 内置Python环境：Python 3.11.9' + #13#10 +
+         '✓ 安装位置：软件同一目录' + #13#10 +
+         '✓ 环境隔离：不污染系统环境' + #13#10 +
+         '✓ 安装大小：约 1500 MB' + #13#10 + #13#10 + 
+         '点击"下一步"继续安装', 
          mbInformation, MB_OK);
 end;
 

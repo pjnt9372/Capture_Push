@@ -38,6 +38,20 @@ jobs:
         run: |
           cmake --build tray/build --config Release
 
+      - name: Download Python 3.11.9 Installer
+        shell: powershell
+        run: |
+          $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+          $dest = "python-3.11.9-amd64.exe"
+          Write-Host "Downloading Python 3.11.9 from $url..."
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          if (Test-Path $dest) {
+              Write-Host "Python installer downloaded successfully."
+          } else {
+              Write-Error "Failed to download Python installer."
+              exit 1
+          }
+
       - name: Setup Inno Setup Chinese Support
         shell: powershell
         run: |
