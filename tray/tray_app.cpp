@@ -361,7 +361,7 @@ std::string GetExecutableDirectory() {
 // 检查Python脚本是否存在
 bool CheckPythonEnvironment() {
     std::string exe_dir = GetExecutableDirectory();
-    std::string pythonw_path = exe_dir + "\\.venv\\Scripts\\pythonw.exe";
+    std::string pythonw_path = exe_dir + "\\.venv\\pythonw.exe";
     std::string script_path = exe_dir + "\\core\\go.py";
     DWORD pythonw_attr = GetFileAttributesA(pythonw_path.c_str());
     DWORD script_attr = GetFileAttributesA(script_path.c_str());
@@ -378,7 +378,7 @@ void ExecutePythonCommand(const std::string& command_suffix) {
     }
     
     std::string exe_dir = GetExecutableDirectory();
-    std::string pythonw_path = exe_dir + "\\.venv\\Scripts\\pythonw.exe";
+    std::string pythonw_path = exe_dir + "\\.venv\\pythonw.exe";
     std::string script_path = exe_dir + "\\core\\go.py";
     std::string full_command = "\"" + pythonw_path + "\" \"" + script_path + "\" " + command_suffix;
     
@@ -405,7 +405,7 @@ void ExecutePythonCommand(const std::string& command_suffix) {
 void ExecuteConfigGui() {
     LogMessage("Launching config GUI...");
     std::string exe_dir = GetExecutableDirectory();
-    std::string pythonw_path = exe_dir + "\\.venv\\Scripts\\pythonw.exe";
+    std::string pythonw_path = exe_dir + "\\.venv\\pythonw.exe";
     std::string gui_script_path = exe_dir + "\\gui\\gui.py";
 
     if (GetFileAttributesA(pythonw_path.c_str()) == INVALID_FILE_ATTRIBUTES || 

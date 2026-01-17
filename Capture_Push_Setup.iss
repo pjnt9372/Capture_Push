@@ -18,6 +18,8 @@ SolidCompression=yes
 InternalCompressLevel=normal
 PrivilegesRequired=admin
 WizardStyle=modern
+AppMutex=Capture_PushTrayAppMutex
+CloseApplications=yes
 SetupIconFile=
 UninstallDisplayIcon={app}\Capture_Push_tray.exe
 
@@ -37,8 +39,8 @@ Source: "VERSION"; DestDir: "{app}"; Flags: ignoreversion
 Source: "core\school\*"; DestDir: "{app}\core\school"; Flags: ignoreversion recursesubdirs
 
 ; 配置文件 - 同时释放到程序目录和 AppData 目录
-Source: "config.ini"; DestDir: "{app}"; Flags: ignoreversion
-Source: "config.ini"; DestDir: "{localappdata}\Capture_Push"; Flags: ignoreversion
+Source: "config.ini"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
+Source: "config.ini"; DestDir: "{localappdata}\Capture_Push"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 ; 配置生成脚本
 Source: "generate_config.py"; DestDir: "{app}"; Flags: ignoreversion
@@ -52,7 +54,7 @@ Name: "{localappdata}\Capture_Push"
 
 [Icons]
 Name: "{group}\Capture_Push托盘"; Filename: "{app}\Capture_Push_tray.exe"
-Name: "{group}\配置工具"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui\gui.py"""
+Name: "{group}\配置工具"; Filename: "{app}\.venv\pythonw.exe"; Parameters: """{app}\gui\gui.py"""
 Name: "{group}\查看配置信息"; Filename: "{app}\install_config.txt"
 Name: "{group}\卸载Capture_Push"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\Capture_Push"; Filename: "{app}\Capture_Push_tray.exe"; Tasks: desktopicon
@@ -69,12 +71,12 @@ Root: HKLM; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "Inst
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-; 1. 生成配置文件（直接利用随包分发的虚拟环境）
-Filename: "{app}\.venv\Scripts\python.exe"; Parameters: """{app}\generate_config.py"" ""{app}"""; StatusMsg: "Initializing config..."; Flags: runhidden waituntilterminated
+; 1. 生成配置文件（直接利用随包分发的嵌入式 Python）
+Filename: "{app}\.venv\python.exe"; Parameters: """{app}\generate_config.py"" ""{app}"""; StatusMsg: "Initializing config..."; Flags: runhidden waituntilterminated
 
 ; 安装后选项
 Filename: "{app}\Capture_Push_tray.exe"; Description: "启动 Capture_Push 托盘程序"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui\gui.py"""; Description: "打开配置工具"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\.venv\pythonw.exe"; Parameters: """{app}\gui\gui.py"""; Description: "打开配置工具"; Flags: nowait postinstall skipifsilent unchecked
 
 [UninstallDelete]
 ; 清理程序目录
@@ -88,6 +90,25 @@ Type: filesandordirs; Name: "{app}\gui\__pycache__"
 Type: files; Name: "{localappdata}\Capture_Push\*.log"
 
 [Code]
+var
+  KeepConfig: Boolean;
+
+// 卸载初始化
+function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  // 询问是否保留配置
+  if MsgBox('您是否要保留配置文件和日志？' + #13#10 + '(选择“否”将彻底删除所有数据)', mbConfirmation, MB_YESNO) = IDYES then
+    KeepConfig := True
+  else
+    KeepConfig := False;
+
+  // 尝试终止进程
+  ShellExec('', 'taskkill.exe', '/f /im Capture_Push_tray.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 // 虚拟环境打包模式下，[Code] 段逻辑基本可以精简
 function InitializeSetup(): Boolean;
 begin
@@ -101,6 +122,18 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  AppDataDir: string;
 begin
-  // 卸载时只需正常删除目录即可，因为虚拟环境是作为普通文件安装的
+  if CurUninstallStep = usPostUninstall then
+  begin
+    if not KeepConfig then
+    begin
+      AppDataDir := ExpandConstant('{localappdata}\Capture_Push');
+      if DirExists(AppDataDir) then
+      begin
+        DelTree(AppDataDir, True, True, True);
+      end;
+    end;
+  end;
 end;

@@ -35,18 +35,38 @@ jobs:
         run: |
           cmake --build tray/build --config Release
 
-      - name: Create and Prepare Virtual Environment for Bundling
+      - name: Create and Prepare Portable Python Environment
         shell: powershell
         run: |
-          Write-Host "Creating virtual environment..."
-          # 使用 --copies 提高在用户机器上的移植性
-          python -m venv --copies .venv
+          $pyVersion = "3.11.9"
+          $pyUrl = "https://www.python.org/ftp/python/$pyVersion/python-$pyVersion-embed-amd64.zip"
+          Write-Host "Downloading Embeddable Python from $pyUrl..."
+          Invoke-WebRequest -Uri $pyUrl -OutFile "python_embed.zip"
           
-          Write-Host "Installing dependencies into venv..."
-          .venv\Scripts\python.exe -m pip install --upgrade pip
-          .venv\Scripts\python.exe -m pip install -r requirements.txt
+          Write-Host "Extracting to .venv..."
+          Expand-Archive -Path "python_embed.zip" -DestinationPath ".venv"
           
-          Write-Host "Virtual environment prepared successfully."
+          cd .venv
+          # 1. 允许使用 site-packages：修改 ._pth 文件
+          $pthFile = Get-ChildItem -Filter "python*._pth" | Select-Object -First 1
+          $content = Get-Content $pthFile.Name
+          $content = $content -replace '#import site', 'import site'
+          $content | Set-Content $pthFile.Name
+          
+          # 2. 安装 pip
+          Write-Host "Installing pip..."
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "get-pip.py"
+          .\python.exe get-pip.py --no-warn-script-location
+          
+          # 3. 安装项目依赖
+          Write-Host "Installing dependencies..."
+          .\python.exe -m pip install -r ..\requirements.txt --no-warn-script-location
+          
+          # 4. 清理
+          Remove-Item "get-pip.py"
+          Remove-Item "..\python_embed.zip"
+          cd ..
+          Write-Host "Portable Python environment prepared successfully."
 
       - name: Setup Inno Setup Chinese Support
         shell: powershell
