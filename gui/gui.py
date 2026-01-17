@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
     QButtonGroup, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,
     QFrame, QDateEdit, QComboBox # 新增 QFrame 用于美化色块
 )
-from PySide6.QtGui import QColor, QFont # 新增相关引用
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtGui import QColor, QFont, QDesktopServices # 新增相关引用
+from PySide6.QtCore import Qt, QDate, QUrl
 
 # 添加父目录到 sys.path（确保能找到 core 模块）
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,6 +26,15 @@ from core.school import get_available_schools, get_school_module
 CONFIG_FILE = str(get_config_path())
 APPDATA_DIR = get_log_file_path('gui').parent
 MANUAL_SCHEDULE_FILE = APPDATA_DIR / "manual_schedule.json"
+
+def get_app_version():
+    version_file = BASE_DIR / "VERSION"
+    if version_file.exists():
+        return version_file.read_text(encoding="utf-8").strip()
+    return "0.0.0"
+
+APP_VERSION = get_app_version()
+GITHUB_URL = "https://github.com/pjnt9372/Capture_Push"
 
 def get_current_school_code():
     """从配置文件中获取当前院校代码"""
@@ -553,6 +562,7 @@ class ConfigWindow(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self.create_basic_tab(), "基本配置")
         self.tabs.addTab(self.create_push_tab(), "推送设置")
+        self.tabs.addTab(self.create_about_tab(), "关于")
         layout.addWidget(self.tabs)
 
         # 底部按钮区
@@ -698,6 +708,58 @@ class ConfigWindow(QWidget):
         layout.addWidget(test1_group)
 
         layout.addStretch()
+        return tab
+
+    def create_about_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(15)
+
+        # Logo/标题
+        title_label = QLabel("Capture_Push")
+        title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #0078d4;")
+        title_label.setAlignment(Qt.AlignCenter)
+        
+        version_label = QLabel(f"版本: {APP_VERSION}")
+        version_label.setStyleSheet("font-size: 14px; color: #666666;")
+        version_label.setAlignment(Qt.AlignCenter)
+
+        desc_label = QLabel("课程成绩与课表自动追踪推送系统")
+        desc_label.setStyleSheet("font-size: 14px;")
+        desc_label.setAlignment(Qt.AlignCenter)
+
+        # GitHub 链接
+        github_btn = QPushButton("GitHub 项目主页")
+        github_btn.setCursor(Qt.PointingHandCursor)
+        github_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                color: #0078d4;
+                text-decoration: underline;
+                background: transparent;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                color: #005a9e;
+            }
+        """)
+        github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(GITHUB_URL)))
+
+        # 其他信息
+        author_label = QLabel("开发者: pjnt9372")
+        author_label.setStyleSheet("font-size: 12px; color: #999999;")
+        author_label.setAlignment(Qt.AlignCenter)
+
+        layout.addStretch()
+        layout.addWidget(title_label)
+        layout.addWidget(version_label)
+        layout.addWidget(desc_label)
+        layout.addWidget(github_btn)
+        layout.addSpacing(20)
+        layout.addWidget(author_label)
+        layout.addStretch()
+
         return tab
 
     def load_config(self):

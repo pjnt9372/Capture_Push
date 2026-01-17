@@ -112,6 +112,35 @@ class SilentInstaller:
     
 
         
+    def run_command_realtime(self, cmd, timeout=300):
+        """实时运行命令并输出到控制台"""
+        try:
+            # 使用 Popen 实时捕获输出
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+
+            # 实时读取输出并打印
+            for line in process.stdout:
+                print(f"  > {line.strip()}", flush=True)
+
+            # 等待进程结束
+            returncode = process.wait(timeout=timeout)
+            
+            if returncode != 0:
+                return False, f"命令执行失败，退出代码: {returncode}"
+            return True, ""
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return False, "命令执行超时"
+        except Exception as e:
+            return False, str(e)
+
     def install_environment(self):
         """安装环境"""
         try:
@@ -179,29 +208,18 @@ class SilentInstaller:
                 # 显示总体安装进度
                 total_missing = len(missing_packages)
                 for i, dep in enumerate(missing_packages, 1):
-                    progress = (i / total_missing) * 100
-                    # 创建进度条
-                    bar_length = 30
-                    filled_length = int(bar_length * progress // 100)
-                    bar = '█' * filled_length + '-' * (bar_length - filled_length)
-                    print(f"\r[INFO] 依赖安装进度: |{bar}| {progress:.1f}% ({i}/{total_missing}) - 正在安装: {dep}", end='', flush=True)
+                    print(f"\n[INFO] 正在安装: {dep} ({i}/{total_missing})", flush=True)
                     
                     cmd = [str(venv_pip), "install", dep]
                     if self.mirror_url:
                         cmd.extend(["-i", self.mirror_url, "--trusted-host", "mirrors.aliyun.com"])
                     
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
+                    success, error_msg = self.run_command_realtime(cmd)
                     
-                    if result.returncode != 0:
-                        print()  # 换行以避免覆盖进度条
-                        raise Exception(f"安装 {dep} 失败: {result.stderr}")
+                    if not success:
+                        raise Exception(f"安装 {dep} 失败: {error_msg}")
                     
-                    self.log(f"\n[INFO] ✓ {dep} 安装成功")
+                    self.log(f"[INFO] ✓ {dep} 安装成功")
                 print()  # 最后换行
                 
                 self.log("[INFO] ✓ 所有缺失依赖安装完成！")

@@ -1,9 +1,13 @@
 ﻿; -- Capture_Push_Setup.iss --
 ; Capture_Push 安装脚本（内置Python环境，无需系统Python）
 
+#define FileHandle FileOpen("VERSION")
+#define AppVersion Trim(FileRead(FileHandle))
+#expr FileClose(FileHandle)
+
 [Setup]
 AppName=Capture_Push
-AppVersion=0.2.0_Dev
+AppVersion={#AppVersion}
 AppPublisher=pjnt9372
 DefaultDirName={autopf}\Capture_Push
 DefaultGroupName=Capture_Push
@@ -21,8 +25,8 @@ UninstallDisplayIcon={app}\Capture_Push_tray.exe
 Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"
 
 [Files]
-; Python 3.11.9 安装包（需提前下载到项目根目录）
-Source: "python-3.11.9-amd64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; Python 3.11.9 安装包 - 释放到安装目录以备卸载使用
+Source: "python-3.11.9-amd64.exe"; DestDir: "{app}\installers"; Flags: ignoreversion
 
 ; 环境安装器脚本
 Source: "installer.py"; DestDir: "{app}"; Flags: ignoreversion
@@ -33,6 +37,7 @@ Source: "requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 ; Python脚本和配置
 Source: "core\*"; DestDir: "{app}\core"; Flags: ignoreversion recursesubdirs
 Source: "gui\*"; DestDir: "{app}\gui"; Flags: ignoreversion recursesubdirs
+Source: "VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 ; 院校模块
 Source: "core\school\*"; DestDir: "{app}\core\school"; Flags: ignoreversion recursesubdirs
@@ -71,7 +76,7 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 ; 1. 检测并安装 Python（仅在不存在时）- 显示安装界面让用户确认
-Filename: "{tmp}\python-3.11.9-amd64.exe"; Parameters: "InstallAllUsers=0 TargetDir=""{app}\python"" PrependPath=0 Include_test=0 Include_tcltk=0"; StatusMsg: "正在安装 Python 3.11.9..."; Flags: waituntilterminated; Check: NeedInstallPython; AfterInstall: AfterPythonInstallWithResult
+Filename: "{app}\installers\python-3.11.9-amd64.exe"; Parameters: "InstallAllUsers=0 TargetDir=""{app}\python"" PrependPath=0 Include_test=0 Include_tcltk=0"; StatusMsg: "正在安装 Python 3.11.9..."; Flags: waituntilterminated; Check: NeedInstallPython; AfterInstall: AfterPythonInstallWithResult
 
 ; 2. 运行环境安装器脚本创建虚拟环境（直接使用内置 Python 运行）
 Filename: "{app}\python\python.exe"; Parameters: """{app}\installer.py"" ""{app}"""; StatusMsg: "正在配置虚拟环境并安装依赖..."; Flags: waituntilterminated; Check: CheckPythonReady
@@ -225,7 +230,7 @@ procedure AfterPythonInstallWithResult();
 var
   PythonInstallerPath: String;
 begin
-  PythonInstallerPath := ExpandConstant('{tmp}\python-3.11.9-amd64.exe');
+  PythonInstallerPath := ExpandConstant('{app}\installers\python-3.11.9-amd64.exe');
   Log('Python installer execution completed.');
   
   // 注意：Python 安装程序已经执行完毕（waituntilterminated）
@@ -329,13 +334,15 @@ end;
 // 卸载前的清理
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  PythonDir, UninstallCmd, Parameters: String;
+  PythonDir, PythonInstaller, UninstallCmd: String;
   ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
   begin
     // 1. 询问用户是否卸载内置 Python
     PythonDir := ExpandConstant('{app}\python');
+    PythonInstaller := ExpandConstant('{app}\installers\python-3.11.9-amd64.exe');
+    
     if DirExists(PythonDir) then
     begin
       if MsgBox('是否卸载内置的 Python 3.11.9 环境？' + #13#10 + #13#10 +
@@ -343,24 +350,21 @@ begin
                 '选择“否”：保留 Python 文件夹。', 
                 mbConfirmation, MB_YESNO) = IDYES then
       begin
-        if GetPythonUninstallString(UninstallCmd) then
+        // 优先使用备份的安装包进行卸载
+        if FileExists(PythonInstaller) then
         begin
-          Log('Found Python uninstaller: ' + UninstallCmd);
-          
-          // 这里的 UninstallCmd 通常包含路径和可能的参数
-          // 如果 UninstallCmd 包含引号，需要妥善处理
-          if Copy(UninstallCmd, 1, 1) = '"' then
-          begin
-            // 假设格式为 "C:\path\to\exe" /uninstall
-            // 实际上 Python Bundle 的 UninstallString 往往就是 exe 路径本身
-            // 我们尝试直接执行它并附加 /uninstall 参数
-          end;
-          
-          // 提示用户
+           Log('Using bundled installer for uninstallation: ' + PythonInstaller);
+           MsgBox('即将启动 Python 官方卸载程序，请在弹出窗口中点击 "Uninstall" 完成清理。', mbInformation, MB_OK);
+           if not Exec(PythonInstaller, '/uninstall', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+           begin
+             MsgBox('无法启动 Python 卸载程序，请手动在控制面板卸载。', mbError, MB_OK);
+           end;
+        end
+        // 如果安装包丢失，尝试从注册表获取卸载命令
+        else if GetPythonUninstallString(UninstallCmd) then
+        begin
+          Log('Bundled installer missing, using registry uninstall string: ' + UninstallCmd);
           MsgBox('即将启动 Python 官方卸载程序，请在弹出窗口中点击 "Uninstall" 完成清理。', mbInformation, MB_OK);
-          
-          // 执行卸载。不带 /quiet 以便用户看到进度并确保清理干净。
-          // 注意：UninstallCmd 可能是 "C:\...\Setup.exe" /uninstall
           if not Exec('cmd.exe', '/c ' + UninstallCmd, '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
           begin
             MsgBox('无法启动 Python 卸载程序，请手动在控制面板卸载。', mbError, MB_OK);
@@ -368,7 +372,7 @@ begin
         end
         else
         begin
-          MsgBox('未在注册表中找到 Python 卸载信息。' + #13#10 + #13#10 +
+          MsgBox('未找到 Python 卸载程序或注册表信息。' + #13#10 + #13#10 +
                  '为避免系统环境损坏，安装程序不会强行删除文件夹。' + #13#10 +
                  '请在卸载完成后手动检查或通过控制面板清理。', mbInformation, MB_OK);
         end;

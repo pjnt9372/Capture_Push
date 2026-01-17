@@ -36,7 +36,7 @@ jobs:
         run: |
           # 确保 school 目录结构被包含在构建中
           echo "Including school modules in build..."
-          dir core\school /s
+          Get-ChildItem -Path "core/school" -Recurse
 
       - name: Download Python 3.11.9 Installer
         shell: powershell
@@ -84,20 +84,18 @@ jobs:
           path: Output/Capture_Push_Setup.exe
           retention-days: 3
 
-      - name: Extract Version from ISS
+      - name: Extract Version
         shell: powershell
         run: |
-          $issContent = Get-Content "Capture_Push_Setup.iss" -Raw
-          $versionMatch = [regex]::Match($issContent, 'AppVersion=(.*)')
-          if ($versionMatch.Success) {
-            $version = $versionMatch.Groups[1].Value.Trim()
+          $version = (Get-Content "VERSION").Trim()
+          if ($version) {
             Write-Host "Extracted version: $version"
             echo "APP_VERSION=$version" >> $env:GITHUB_ENV
             # Also create tag-friendly version
             $tagVersion = "v$version" -replace "_", "-"
             echo "TAG_VERSION=$tagVersion" >> $env:GITHUB_ENV
           } else {
-            Write-Error "Could not extract version from ISS file"
+            Write-Error "Could not read version from VERSION file"
             exit 1
           }
 
