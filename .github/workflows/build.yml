@@ -18,17 +18,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
-      - name: Install Python dependencies
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build Installer EXE
-        run: |
-          python build_installer_exe.py
 
       - name: Configure CMake for Tray App
         run: |
@@ -37,6 +31,26 @@ jobs:
       - name: Build Tray App
         run: |
           cmake --build tray/build --config Release
+
+      - name: Prepare School Modules
+        run: |
+          # 确保 school 目录结构被包含在构建中
+          echo "Including school modules in build..."
+          Get-ChildItem -Path "core/school" -Recurse
+
+      - name: Download Python 3.11.9 Installer
+        shell: powershell
+        run: |
+          $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+          $dest = "python-3.11.9-amd64.exe"
+          Write-Host "Downloading Python 3.11.9 from $url..."
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          if (Test-Path $dest) {
+              Write-Host "Python installer downloaded successfully."
+          } else {
+              Write-Error "Failed to download Python installer."
+              exit 1
+          }
 
       - name: Setup Inno Setup Chinese Support
         shell: powershell
@@ -68,27 +82,26 @@ jobs:
         with:
           name: Capture_Push-Setup
           path: Output/Capture_Push_Setup.exe
+          retention-days: 3
 
-      - name: Extract Version from ISS
+      - name: Extract Version
         shell: powershell
         run: |
-          $issContent = Get-Content "Capture_Push_Setup.iss" -Raw
-          $versionMatch = [regex]::Match($issContent, 'AppVersion=(.*)')
-          if ($versionMatch.Success) {
-            $version = $versionMatch.Groups[1].Value.Trim()
+          $version = (Get-Content "VERSION").Trim()
+          if ($version) {
             Write-Host "Extracted version: $version"
             echo "APP_VERSION=$version" >> $env:GITHUB_ENV
             # Also create tag-friendly version
             $tagVersion = "v$version" -replace "_", "-"
             echo "TAG_VERSION=$tagVersion" >> $env:GITHUB_ENV
           } else {
-            Write-Error "Could not extract version from ISS file"
+            Write-Error "Could not read version from VERSION file"
             exit 1
           }
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        if: github.ref == 'refs/heads/master'
         with:
           files: Output/Capture_Push_Setup.exe
           tag_name: ${{ env.TAG_VERSION }}
