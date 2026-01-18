@@ -20,6 +20,7 @@ InternalCompressLevel=normal
 PrivilegesRequired=admin
 WizardStyle=modern
 AppMutex=Capture_PushTrayAppMutex
+ArchitecturesInstallIn64BitMode=x64
 CloseApplications=yes
 UsePreviousAppDir=yes
 SetupIconFile=
@@ -40,8 +41,7 @@ Source: "VERSION"; DestDir: "{app}"; Flags: ignoreversion
 ; 院校模块
 Source: "core\school\*"; DestDir: "{app}\core\school"; Flags: ignoreversion recursesubdirs
 
-; 配置文件 - 同时释放到程序目录和 AppData 目录
-Source: "config.ini"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
+; 配置文件 - 释放到 AppData 目录
 Source: "config.ini"; DestDir: "{localappdata}\Capture_Push"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 ; 配置生成脚本
@@ -67,10 +67,10 @@ Name: autostart; Description: "开机自动启动托盘程序"; GroupDescription
 
 [Registry]
 ; 注册安装路径
-Root: HKLM; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue
+Root: HKLM64; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue
 
 ; 自启动托盘程序（如果用户选择了autostart任务）
-Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKLM64; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 ; 1. 生成配置文件（直接利用随包分发的嵌入式 Python）
@@ -115,11 +115,15 @@ end;
 function InitializeSetup(): Boolean;
 var
   OldVersion: string;
+  ResultCode: Integer;
 begin
   Result := True;
   
+  // 主动关闭运行中的托盘程序（升级场景）
+  ShellExec('', 'taskkill.exe', '/f /im Capture_Push_tray.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  
   // 检查是否已经安装（通过注册表获取旧版本号）
-  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D8C9E6B5-F7A1-4B9D-8E2C-5A3D1C0B2A9E}_is1', 'DisplayVersion', OldVersion) then
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D8C9E6B5-F7A1-4B9D-8E2C-5A3D1C0B2A9E}_is1', 'DisplayVersion', OldVersion) then
   begin
     // 如果检测到旧版本
     if MsgBox('检测到系统已安装 Capture_Push (版本: ' + OldVersion + ')。' + #13#10 + #13#10 +

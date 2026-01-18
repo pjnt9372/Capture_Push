@@ -745,6 +745,25 @@ class ConfigWindow(QWidget):
             }
         """)
         github_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(GITHUB_URL)))
+        
+        # 检查更新按钮
+        update_btn = QPushButton("检查更新")
+        update_btn.setCursor(Qt.PointingHandCursor)
+        update_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #0078d4;
+                color: #0078d4;
+                padding: 5px 15px;
+                border-radius: 3px;
+                background: white;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background: #0078d4;
+                color: white;
+            }
+        """)
+        update_btn.clicked.connect(self.check_for_updates)
 
         # 其他信息
         author_label = QLabel("开发者: pjnt9372")
@@ -756,6 +775,8 @@ class ConfigWindow(QWidget):
         layout.addWidget(version_label)
         layout.addWidget(desc_label)
         layout.addWidget(github_btn)
+        layout.addSpacing(10)
+        layout.addWidget(update_btn)
         layout.addSpacing(20)
         layout.addWidget(author_label)
         layout.addStretch()
@@ -896,6 +917,85 @@ class ConfigWindow(QWidget):
             self.sched_win.show()
         else:
             self.sched_win.activateWindow()
+    
+    def check_for_updates(self):
+        """检查软件更新"""
+        try:
+            from core.updater import Updater
+            from PySide6.QtWidgets import QProgressDialog
+            from PySide6.QtCore import QThread, Signal
+            import subprocess
+            
+            progress = QProgressDialog("正在检查更新...", "取消", 0, 0, self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+            QApplication.processEvents()
+            
+            updater = Updater()
+            result = updater.check_update()
+            
+            progress.close()
+            
+            if result:
+                version, data = result
+                reply = QMessageBox.question(
+                    self,
+                    "发现新版本",
+                    f"当前版本: {updater.current_version}\n"
+                    f"最新版本: {version}\n\n"
+                    f"是否下载更新？",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                
+                if reply == QMessageBox.Yes:
+                    # 检查是否有 Python 环境，决定下载哪个包
+                    has_python = updater.check_python_env()
+                    use_lite = has_python
+                    
+                    download_progress = QProgressDialog(
+                        f"正在下载 {'轻量级' if use_lite else '完整版'}更新包...",
+                        "取消",
+                        0, 100, self
+                    )
+                    download_progress.setWindowModality(Qt.WindowModal)
+                    download_progress.setMinimumDuration(0)
+                    
+                    def update_progress(p):
+                        download_progress.setValue(int(p))
+                        QApplication.processEvents()
+                    
+                    installer_path = updater.download_update(data, use_lite, update_progress)
+                    download_progress.close()
+                    
+                    if installer_path:
+                        reply = QMessageBox.question(
+                            self,
+                            "下载完成",
+                            f"更新包已下载完成！\n\n"
+                            f"是否立即安装？\n"
+                            f"（安装程序将关闭当前程序）",
+                            QMessageBox.Yes | QMessageBox.No
+                        )
+                        
+                        if reply == QMessageBox.Yes:
+                            if updater.install_update(installer_path, silent=False):
+                                QMessageBox.information(self, "提示", "安装程序已启动，当前程序即将退出...")
+                                QApplication.quit()
+                        else:
+                            QMessageBox.information(
+                                self,
+                                "提示",
+                                f"安装包已保存在：\n{installer_path}\n\n"
+                                f"您可以稍后手动运行安装。"
+                            )
+                    else:
+                        QMessageBox.warning(self, "下载失败", "更新包下载失败，请稍后重试。")
+            else:
+                QMessageBox.information(self, "已是最新", f"当前已是最新版本\uff08{updater.current_version}）")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"检查更新时出错：\n{str(e)}")
 
     def closeEvent(self, event):
         """主窗口关闭事件：检查是否有子窗口未关闭"""

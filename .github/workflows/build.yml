@@ -87,16 +87,28 @@ jobs:
           }
           Write-Host "ChineseSimplified.isl verified successfully."
 
-      - name: Build Installer with Inno Setup
+      - name: Build Full Installer with Inno Setup
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Capture_Push_Setup.iss
         shell: powershell
 
-      - name: Upload Artifact
+      - name: Build Lite Installer with Inno Setup
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Capture_Push_Lite_Setup.iss
+        shell: powershell
+
+      - name: Upload Full Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Capture_Push-Setup
+          name: Capture_Push-Setup-Full
           path: Output/Capture_Push_Setup.exe
+          retention-days: 3
+
+      - name: Upload Lite Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capture_Push-Setup-Lite
+          path: Output/Capture_Push_Lite_Setup.exe
           retention-days: 3
 
       - name: Extract Version
@@ -120,7 +132,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/master'
         with:
-          files: Output/Capture_Push_Setup.exe
+          files: |
+            Output/Capture_Push_Setup.exe
+            Output/Capture_Push_Lite_Setup.exe
           tag_name: ${{ env.TAG_VERSION }}
           name: Release ${{ env.APP_VERSION }}
           body: |
@@ -128,6 +142,12 @@ jobs:
             - Version: ${{ env.APP_VERSION }}
             - Build Number: ${{ github.run_number }}
             - Build Date: ${{ github.event.head_commit.timestamp || 'Manual Trigger' }}
+            
+            ## 安装包说明
+            - **Capture_Push_Setup.exe**：完整版安装包，包含 Python 运行环境（约 40-50 MB）
+            - **Capture_Push_Lite_Setup.exe**：轻量级更新包，仅更新程序文件，不包含 Python 环境（约 5-10 MB）
+            
+            ⚠️ **首次安装请下载完整版，已安装用户可使用轻量级包快速更新**
           draft: false
           prerelease: false
         env:
