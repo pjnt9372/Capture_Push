@@ -31,9 +31,10 @@
 #define ID_MENU_SCHEDULE_FULL 1006
 #define ID_MENU_REFRESH_SCHEDULE 1007
 #define ID_MENU_SEND_CRASH_REPORT 1008
-#define ID_MENU_EXIT 1009
-#define ID_MENU_OPEN_CONFIG 1010
-#define ID_MENU_EDIT_CONFIG 1011
+#define ID_MENU_CHECK_UPDATE 1009
+#define ID_MENU_EXIT 1010
+#define ID_MENU_OPEN_CONFIG 1011
+#define ID_MENU_EDIT_CONFIG 1012
 #define TIMER_LOOP_CHECK 1001
 
 NOTIFYICONDATAW nid;
@@ -511,6 +512,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_REFRESH_SCHEDULE, L"刷新课表");
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_SEND_CRASH_REPORT, L"发送崩溃报告");
+                AppendMenuW(hMenu, MF_STRING, ID_MENU_CHECK_UPDATE, L"检查更新");
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_OPEN_CONFIG, L"打开配置工具");
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_EDIT_CONFIG, L"更改配置文件");
@@ -553,6 +555,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case ID_MENU_SEND_CRASH_REPORT:
                     LogMessage("User selected: Send crash report");
                     ExecutePythonCommand("--pack-logs");
+                    break;
+                case ID_MENU_CHECK_UPDATE:
+                    LogMessage("User selected: Check for updates");
+                    ExecutePythonCommand("--check-update");
                     break;
                 case ID_MENU_REFRESH_SCHEDULE:
                     LogMessage("User selected: Refresh schedule");

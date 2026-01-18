@@ -451,7 +451,8 @@ def main():
     parser.add_argument("--push-tomorrow", action="store_true", help="推送明日课表")
     parser.add_argument("--push-next-week", action="store_true", help="推送下周全周课表")
     parser.add_argument("--pack-logs", action="store_true", help="打包日志文件用于崩溃上报")
-    parser.add_argument("--force", action="store_true", help="强制从网络更新，忽略循环检测")
+    parser.add_argument("--check-update", action="store_true", help="检查软件更新")
+    parser.add_argument("--force", action="store_true", help="强制从网络更新,忽略循环检测")
     args = parser.parse_args()
     
     logger.info(f"解析后的参数: fetch_grade={args.fetch_grade}, push_grade={args.push_grade}, "
@@ -491,6 +492,22 @@ def main():
             print(f"✅ 崩溃报告已生成: {report_path}")
         else:
             print("❌ 崩溃报告生成失败")
+    if args.check_update:
+        logger.info("执行: check_update")
+        from core.updater import Updater
+        updater = Updater()
+        result = updater.check_update()
+        if result:
+            version, data = result
+            print(f"发现新版本: {version}")
+            print(f"当前版本: {updater.current_version}")
+            # 返回更新信息给调用者（GUI）
+            import json
+            print("UPDATE_INFO:" + json.dumps({"version": version, "has_update": True}, ensure_ascii=False))
+        else:
+            print("当前已是最新版本")
+            import json
+            print("UPDATE_INFO:" + json.dumps({"has_update": False}, ensure_ascii=False))
     
     logger.info("main() 执行完成")
 
