@@ -5,8 +5,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <locale>
-#include <codecvt>
 #include <fstream>
 #include <sstream>
 #include <algorithm>  // for std::min and std::max
@@ -44,7 +42,6 @@
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-#define PRODUCT_NAME L"Capture_Push Tray Program"
 
 NOTIFYICONDATAW nid;
 HWND hwnd;
@@ -234,7 +231,7 @@ void InitLogging() {
         long size = (long)file.tellg();
         file.close();
         if (size > MAX_LOG_SIZE) {
-            // 简单滚动：直接重命名为 .old (或者可以实现更复杂的 .1, .2)
+            // 简单滚动：直接重命名为 .old
             std::string oldLogPath = logPath + ".old";
             DeleteFileA(oldLogPath.c_str());
             MoveFileA(logPath.c_str(), oldLogPath.c_str());
@@ -258,7 +255,7 @@ void CloseLogging() {
     }
 }
 
-// 安全日志写入（带时间戳，仅写入文件，可选择启用控制台输出）
+// 安全日志写入（带时间戳，仅写入文件）
 void LogMessage(const std::string& message) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -282,21 +279,18 @@ void LogMessage(const std::string& message) {
     if (g_log_file.is_open()) {
         std::lock_guard<std::mutex> lock(g_log_mutex);
         
-        // 检查文件大小并自动滚动
         std::string logDir = GetLogDirectory();
         std::string dateStr = GetCurrentDateString();
         std::string logPath = logDir + "\\" + dateStr + "_tray.log";
         
         long current_pos = (long)g_log_file.tellp();
-        const long MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
+        const long MAX_LOG_SIZE = 10 * 1024 * 1024;
         
         if (current_pos > MAX_LOG_SIZE) {
             g_log_file.close();
-            
             std::string oldLogPath = logPath + ".old";
             DeleteFileA(oldLogPath.c_str());
             MoveFileA(logPath.c_str(), oldLogPath.c_str());
-            
             g_log_file.open(logPath, std::ios::out | std::ios::app);
             g_log_file << "--- Log rotated due to size limit ---\n";
         }
@@ -567,14 +561,6 @@ void EditConfigFile() {
     ShellExecuteA(NULL, "open", "notepad.exe", config_path.c_str(), NULL, SW_SHOW);
 }
 
-// 将std::string转换为std::wstring（未使用，保留兼容性）
-std::wstring s2ws(const std::string& str) {
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
-    std::wstring wstrTo(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
-    return wstrTo;
-}
-
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE:
@@ -586,10 +572,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
             nid.uCallbackMessage = WM_TRAYICON;
             
-            // Set tooltip with product name and version
-            wchar_t tooltip[128];
-            swprintf_s(tooltip, L"%s v%s", PRODUCT_NAME, TOSTRING(APP_VERSION));
-            wcscpy_s(nid.szTip, tooltip);
+            wcscpy_s(nid.szTip, L"Capture_Push Tray");
             
             nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
             Shell_NotifyIconW(NIM_ADD, &nid);
@@ -669,14 +652,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     LogMessage("User selected: Fetch full schedule");
                     ExecutePythonCommand("--fetch-schedule --force");
                     break;
-                case ID_MENU_SEND_CRASH_REPORT:
+                /*case ID_MENU_SEND_CRASH_REPORT:
                     LogMessage("User selected: Send crash report");
                     ExecutePythonCommand("--pack-logs");
                     break;
                 case ID_MENU_CHECK_UPDATE:
                     LogMessage("User selected: Check for updates");
                     ExecutePythonCommand("--check-update");
-                    break;
+                    break;*/
                 case ID_MENU_REFRESH_SCHEDULE:
                     LogMessage("User selected: Refresh schedule");
                     ExecutePythonCommand("--fetch-schedule --force");
@@ -721,13 +704,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     InitLogging();
     LogMessage("Application starting...");
-    LogMessage("Built with version: " + std::string(APP_VERSION)); // Log version
+    LogMessage("Built with version: " + std::string(APP_VERSION));
 
     // 双重检查：互斥锁 + 进程列表检查
     HANDLE hMutex = CreateMutexW(NULL, TRUE, L"Capture_PushTrayAppMutex");
     bool alreadyRunning = (GetLastError() == ERROR_ALREADY_EXISTS);
     
-    // 如果互斥锁显示已存在，或者检测到同名进程（排除自身）
     if (alreadyRunning || IsProcessRunning(L"Capture_Push_tray.exe")) {
         LogMessage("Another instance is already running. Exiting.");
         MessageBoxW(NULL, 
