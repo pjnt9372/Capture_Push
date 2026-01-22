@@ -44,7 +44,7 @@
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-#define PRODUCT_NAME L"Capture_Push 托盘程序"
+#define PRODUCT_NAME L"Capture_Push Tray Program"
 
 NOTIFYICONDATAW nid;
 HWND hwnd;
@@ -731,8 +731,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (alreadyRunning || IsProcessRunning(L"Capture_Push_tray.exe")) {
         LogMessage("Another instance is already running. Exiting.");
         MessageBoxW(NULL, 
-                    L"Capture_Push 托盘程序已经在运行中！\n如果看不到托盘图标，请检查任务管理器。",
-                    L"提示",
+                    L"Capture_Push Tray Program is already running!\nIf you can't see the tray icon, please check Task Manager.",
+                    L"Info",
                     MB_OK | MB_ICONINFORMATION);
         if (hMutex) CloseHandle(hMutex);
         CloseLogging();
@@ -746,7 +746,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpszClassName = CLASS_NAME;
     RegisterClassW(&wc);
     
-    hwnd = CreateWindowExW(0, CLASS_NAME, L"Capture_Push 托盘程序",
+    hwnd = CreateWindowExW(0, CLASS_NAME, L"Capture_Push Tray Program",
                            0, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
     
     MSG msg = {};

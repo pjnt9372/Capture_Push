@@ -223,7 +223,9 @@ class Updater:
             
             # 构建安装命令
             cmd = [installer_path]
-            if silent:
+            
+            # 如果是轻量级安装包，或者显式指定静默安装，则使用静默模式
+            if silent or 'Lite_Setup' in os.path.basename(installer_path):
                 cmd.append('/VERYSILENT')
                 cmd.append('/NORESTART')
             
@@ -292,7 +294,10 @@ def check_for_updates_cli():
                 print(f"\n下载完成: {installer}")
                 choice = input("是否立即安装? (y/n): ").strip().lower()
                 if choice == 'y':
-                    if updater.install_update(installer):
+                    # 对于轻量级更新包，使用静默安装
+                    installer_filename = os.path.basename(installer)
+                    is_lite_installer = 'Lite_Setup' in installer_filename
+                    if updater.install_update(installer, silent=is_lite_installer):
                         print("正在启动安装程序...")
                         sys.exit(0)
                 else:
