@@ -44,7 +44,7 @@
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-#define PRODUCT_NAME L"Capture_Push 托盘程序"
+#define PRODUCT_NAME L"Capture_Push Tray Program"
 
 NOTIFYICONDATAW nid;
 HWND hwnd;
@@ -627,9 +627,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_SCHEDULE_TOMORROW, L"推送明天课表");
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_SCHEDULE_FULL, L"推送本学期全部课表");
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_REFRESH_SCHEDULE, L"刷新课表");
-                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
-                AppendMenuW(hMenu, MF_STRING, ID_MENU_SEND_CRASH_REPORT, L"发送崩溃报告");
-                AppendMenuW(hMenu, MF_STRING, ID_MENU_CHECK_UPDATE, L"检查更新");
+                //AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                //AppendMenuW(hMenu, MF_STRING, ID_MENU_SEND_CRASH_REPORT, L"发送崩溃报告");
+                //AppendMenuW(hMenu, MF_STRING, ID_MENU_CHECK_UPDATE, L"检查更新");
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_OPEN_CONFIG, L"打开配置工具");
                 AppendMenuW(hMenu, MF_STRING, ID_MENU_EDIT_CONFIG, L"更改配置文件");
@@ -731,8 +731,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     if (alreadyRunning || IsProcessRunning(L"Capture_Push_tray.exe")) {
         LogMessage("Another instance is already running. Exiting.");
         MessageBoxW(NULL, 
-                    L"Capture_Push 托盘程序已经在运行中！\n如果看不到托盘图标，请检查任务管理器。",
-                    L"提示",
+                    L"Capture_Push Tray Program is already running!\nIf you can't see the tray icon, please check Task Manager.",
+                    L"Info",
                     MB_OK | MB_ICONINFORMATION);
         if (hMutex) CloseHandle(hMutex);
         CloseLogging();
@@ -746,7 +746,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpszClassName = CLASS_NAME;
     RegisterClassW(&wc);
     
-    hwnd = CreateWindowExW(0, CLASS_NAME, L"Capture_Push 托盘程序",
+    hwnd = CreateWindowExW(0, CLASS_NAME, L"Capture_Push Tray Program",
                            0, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
     
     MSG msg = {};

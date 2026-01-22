@@ -144,8 +144,8 @@ jobs:
             - Build Date: ${{ github.event.head_commit.timestamp || 'Manual Trigger' }}
             
             ## 安装包说明
-            - **Capture_Push_Setup.exe**：完整版安装包，包含 Python 运行环境（约 40-50 MB）
-            - **Capture_Push_Lite_Setup.exe**：轻量级更新包，仅更新程序文件，不包含 Python 环境（约 5-10 MB）
+            - **Capture_Push_Setup.exe**：完整版安装包，包含 Python 运行环境（约 200-500 MB）
+            - **Capture_Push_Lite_Setup.exe**：轻量级更新包，仅更新程序文件，不包含 Python 环境（约 2-10 MB）
             
             ⚠️ **首次安装请下载完整版，已安装用户可使用轻量级包快速更新**
           draft: false
