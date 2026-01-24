@@ -529,7 +529,26 @@ class ConfigWindow(QWidget):
         """检查软件更新"""
         try:
             from core.updater import Updater
-            from PySide6.QtWidgets import QProgressDialog
+            from PySide6.QtWidgets import QProgressDialog, QCheckBox
+            
+            # 询问用户是否检查预发布版本
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("检查更新")
+            msg_box.setText("是否检查预发布版本？")
+            msg_box.setInformativeText(f"当前版本: {get_app_version()}\n预发布版本可能包含实验性功能，稳定性不如正式版。")
+            
+            yes_btn = msg_box.addButton("只检查正式版", QMessageBox.YesRole)
+            beta_btn = msg_box.addButton("检查预发布版", QMessageBox.ActionRole)
+            msg_box.addButton(QMessageBox.Cancel)
+            
+            msg_box.exec_()
+            
+            clicked_btn = msg_box.clickedButton()
+            
+            if clicked_btn == msg_box.button(QMessageBox.Cancel):
+                return
+            
+            include_prerelease = clicked_btn == beta_btn
             
             progress = QProgressDialog("正在检查更新...", "取消", 0, 0, self)
             progress.setWindowModality(Qt.WindowModal)
@@ -538,17 +557,18 @@ class ConfigWindow(QWidget):
             QApplication.processEvents()
             
             updater = Updater()
-            result = updater.check_update()
+            result = updater.check_update(include_prerelease=include_prerelease)
             
             progress.close()
             
             if result:
                 version, data = result
+                is_prerelease = data.get('prerelease', False)
                 reply = QMessageBox.question(
                     self,
                     "发现新版本",
                     f"当前版本: {updater.current_version}\n"
-                    f"最新版本: {version}\n\n"
+                    f"最新版本: {version}{' (预发布)' if is_prerelease else ''}\n\n"
                     f"是否下载更新？",
                     QMessageBox.Yes | QMessageBox.No
                 )

@@ -24,6 +24,7 @@ class Updater:
     
     GITHUB_REPO = "pjnt9372/Capture_Push"  # 替换为实际仓库
     API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    ALL_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
     
     def __init__(self):
         self.current_version = self._get_current_version()
@@ -41,53 +42,65 @@ class Updater:
             logger.error(f"读取版本号失败: {e}")
             return "0.0.0"
     
-    def check_update(self) -> Optional[Tuple[str, dict]]:
+    def check_update(self, include_prerelease=False) -> Optional[Tuple[str, dict]]:
         """
         检查是否有新版本
+        
+        Args:
+            include_prerelease: 是否包括预发布版本
         
         Returns:
             (版本号, 资产信息) 如果有更新
             None 如果没有更新或检查失败
         """
         try:
-            logger.info("正在检查更新...")
-            req = urllib.request.Request(
-                self.API_URL,
-                headers={'User-Agent': 'Capture_Push-Updater'}
-            )
+            logger.info(f"正在检查更新... (包含预发布版本: {include_prerelease})")
             
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.loads(response.read().decode('utf-8'))
-            
-            latest_version = data['tag_name'].lstrip('v').replace('-', '.').replace('_', '.')
-            
-            logger.info(f"当前版本: {self.current_version}, 最新版本: {latest_version}")
-            
-            if self._compare_version(latest_version, self.current_version) > 0:
-                logger.info(f"发现新版本: {latest_version}")
-                return latest_version, data
-            else:
-                logger.info("当前已是最新版本")
-                return None
-                
-        except urllib.error.URLError as e:
-            logger.warning(f"直接访问GitHub API失败: {e}")
-            
-            # 尝试使用代理访问API
-            try:
-                logger.info(f"尝试使用代理访问API: {PROXY_URL_PREFIX}{self.API_URL}")
-                proxy_api_url = PROXY_URL_PREFIX + self.API_URL
-                req_proxy = urllib.request.Request(
-                    proxy_api_url,
+            if include_prerelease:
+                # 检查所有发布版本，包括预发布
+                req = urllib.request.Request(
+                    self.ALL_RELEASES_API_URL,
                     headers={'User-Agent': 'Capture_Push-Updater'}
                 )
                 
-                with urllib.request.urlopen(req_proxy, timeout=20) as response:
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    releases = json.loads(response.read().decode('utf-8'))
+                
+                # 查找最新的版本（包括预发布）
+                latest_release = None
+                latest_version = "0.0.0"
+                
+                for release in releases:
+                    # 如果不包含预发布版本，则跳过预发布
+                    if not include_prerelease and release.get('prerelease', False):
+                        continue
+                    
+                    release_version = release['tag_name'].lstrip('v').replace('-', '.').replace('_', '.')
+                    
+                    # 比较版本号
+                    if self._compare_version(release_version, latest_version) > 0:
+                        latest_version = release_version
+                        latest_release = release
+                
+                if latest_release and self._compare_version(latest_version, self.current_version) > 0:
+                    logger.info(f"发现新版本: {latest_version} (预发布: {latest_release.get('prerelease', False)})")
+                    return latest_version, latest_release
+                else:
+                    logger.info("当前已是最新版本")
+                    return None
+            else:
+                # 只检查最新的稳定版本
+                req = urllib.request.Request(
+                    self.API_URL,
+                    headers={'User-Agent': 'Capture_Push-Updater'}
+                )
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
                     data = json.loads(response.read().decode('utf-8'))
                 
                 latest_version = data['tag_name'].lstrip('v').replace('-', '.').replace('_', '.')
                 
-                logger.info(f"通过代理获取到版本: {self.current_version}, 最新版本: {latest_version}")
+                logger.info(f"当前版本: {self.current_version}, 最新稳定版本: {latest_version}")
                 
                 if self._compare_version(latest_version, self.current_version) > 0:
                     logger.info(f"发现新版本: {latest_version}")
@@ -95,6 +108,66 @@ class Updater:
                 else:
                     logger.info("当前已是最新版本")
                     return None
+                    
+        except urllib.error.URLError as e:
+            logger.warning(f"直接访问GitHub API失败: {e}")
+            
+            # 尝试使用代理访问API
+            try:
+                if include_prerelease:
+                    logger.info(f"尝试使用代理访问API: {PROXY_URL_PREFIX}{self.ALL_RELEASES_API_URL}")
+                    proxy_api_url = PROXY_URL_PREFIX + self.ALL_RELEASES_API_URL
+                    req_proxy = urllib.request.Request(
+                        proxy_api_url,
+                        headers={'User-Agent': 'Capture_Push-Updater'}
+                    )
+                    
+                    with urllib.request.urlopen(req_proxy, timeout=20) as response:
+                        releases = json.loads(response.read().decode('utf-8'))
+                    
+                    # 查找最新的版本（包括预发布）
+                    latest_release = None
+                    latest_version = "0.0.0"
+                    
+                    for release in releases:
+                        # 如果不包含预发布版本，则跳过预发布
+                        if not include_prerelease and release.get('prerelease', False):
+                            continue
+                        
+                        release_version = release['tag_name'].lstrip('v').replace('-', '.').replace('_', '.')
+                        
+                        # 比较版本号
+                        if self._compare_version(release_version, latest_version) > 0:
+                            latest_version = release_version
+                            latest_release = release
+                    
+                    if latest_release and self._compare_version(latest_version, self.current_version) > 0:
+                        logger.info(f"通过代理发现新版本: {latest_version} (预发布: {latest_release.get('prerelease', False)})")
+                        return latest_version, latest_release
+                    else:
+                        logger.info("当前已是最新版本")
+                        return None
+                else:
+                    logger.info(f"尝试使用代理访问API: {PROXY_URL_PREFIX}{self.API_URL}")
+                    proxy_api_url = PROXY_URL_PREFIX + self.API_URL
+                    req_proxy = urllib.request.Request(
+                        proxy_api_url,
+                        headers={'User-Agent': 'Capture_Push-Updater'}
+                    )
+                    
+                    with urllib.request.urlopen(req_proxy, timeout=20) as response:
+                        data = json.loads(response.read().decode('utf-8'))
+                    
+                    latest_version = data['tag_name'].lstrip('v').replace('-', '.').replace('_', '.')
+                    
+                    logger.info(f"通过代理获取到版本: {self.current_version}, 最新版本: {latest_version}")
+                    
+                    if self._compare_version(latest_version, self.current_version) > 0:
+                        logger.info(f"发现新版本: {latest_version}")
+                        return latest_version, data
+                    else:
+                        logger.info("当前已是最新版本")
+                        return None
                     
             except urllib.error.URLError as proxy_error:
                 logger.error(f"通过代理访问GitHub API也失败: {proxy_error}")
@@ -284,38 +357,37 @@ class Updater:
             
             logger.info("安装程序已启动，即将退出当前程序")
             
-            # 静默安装时，需要在安装完成后自启动托盘程序
-            if silent or 'Lite_Setup' in os.path.basename(installer_path):
-                import threading
-                import time
-                import winreg
+            # 安装完成后自启动托盘程序
+            import threading
+            import time
+            import winreg
+            
+            def delayed_start_tray():
+                # 等待安装完成
+                time.sleep(5)
                 
-                def delayed_start_tray():
-                    # 等待安装完成
-                    time.sleep(5)
+                # 尝试从注册表获取安装路径
+                try:
+                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                        r"SOFTWARE\\Capture_Push", 
+                                        0, 
+                                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                    install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                    winreg.CloseKey(key)
                     
-                    # 尝试从注册表获取安装路径
-                    try:
-                        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
-                                            r"SOFTWARE\\Capture_Push", 
-                                            0, 
-                                            winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
-                        install_path, _ = winreg.QueryValueEx(key, "InstallPath")
-                        winreg.CloseKey(key)
-                        
-                        tray_exe = Path(install_path) / "Capture_Push_tray.exe"
-                        if tray_exe.exists():
-                            # 启动托盘程序
-                            subprocess.Popen([str(tray_exe)], shell=True)
-                            logger.info("托盘程序已启动")
-                        else:
-                            logger.warning(f"托盘程序不存在: {tray_exe}")
-                    except Exception as e:
-                        logger.error(f"启动托盘程序失败: {e}")
-                
-                # 在后台线程中启动托盘程序
-                thread = threading.Thread(target=delayed_start_tray, daemon=True)
-                thread.start()
+                    tray_exe = Path(install_path) / "Capture_Push_tray.exe"
+                    if tray_exe.exists():
+                        # 启动托盘程序
+                        subprocess.Popen([str(tray_exe)], shell=True)
+                        logger.info("托盘程序已启动")
+                    else:
+                        logger.warning(f"托盘程序不存在: {tray_exe}")
+                except Exception as e:
+                    logger.error(f"启动托盘程序失败: {e}")
+            
+            # 在后台线程中启动托盘程序
+            thread = threading.Thread(target=delayed_start_tray, daemon=True)
+            thread.start()
             
             return True
             
@@ -352,11 +424,17 @@ class Updater:
 def check_for_updates_cli():
     """命令行检查更新"""
     updater = Updater()
-    result = updater.check_update()
+    
+    # 询问用户是否检查预发布版本
+    choice = input("是否检查预发布版本? (y/n): ").strip().lower()
+    include_prerelease = choice == 'y'
+    
+    result = updater.check_update(include_prerelease=include_prerelease)
     
     if result:
         version, data = result
-        print(f"发现新版本: {version}")
+        is_prerelease = data.get('prerelease', False)
+        print(f"发现新版本: {version}{' (预发布)' if is_prerelease else ''}")
         print(f"发布时间: {data.get('published_at', 'N/A')}")
         print(f"更新说明:\n{data.get('body', '无')}")
         

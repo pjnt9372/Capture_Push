@@ -2,9 +2,23 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - master
+    branches: [master, Beta]
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: '是否标记为预发布版本'
+        required: true
+        default: false
+        type: boolean
+      version_type:
+        description: '版本类型 (beta, rc, stable)'
+        required: false
+        default: 'stable'
+        type: choice
+        options:
+        - stable
+        - beta
+        - rc
 
 jobs:
   build:
@@ -130,7 +144,7 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/Beta' || github.event_name == 'workflow_dispatch'
         with:
           files: |
             Output/Capture_Push_Setup.exe
@@ -149,6 +163,6 @@ jobs:
             
             ⚠️ **首次安装请下载完整版，已安装用户可使用轻量级包快速更新**
           draft: false
-          prerelease: false
+          prerelease: ${{ github.ref == 'refs/heads/Beta' || github.event.inputs.prerelease == 'true' || contains(env.APP_VERSION, 'beta') || contains(env.APP_VERSION, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
