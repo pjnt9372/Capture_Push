@@ -1,10 +1,17 @@
 name: Build and Release
 
 on:
+  # 支持 master 和 Beta 分支自动触发
   push:
-    branches:
-      - master
+    branches: [master, Beta]
+  # 允许手动触发
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: '是否标记为预发布版本'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -18,6 +25,51 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # =============== 严格校验 VERSION 格式 ===============
+      - name: Validate VERSION format
+        shell: powershell
+        run: |
+          $versionLine = Get-Content "VERSION" -TotalCount 1 -ErrorAction SilentlyContinue
+          if (-not $versionLine) {
+            Write-Error "❌ VERSION file is missing or empty!"
+            exit 1
+          }
+          $version = $versionLine.Trim()
+          if ($version -eq "") {
+            Write-Error "❌ VERSION file is empty!"
+            exit 1
+          }
+
+          Write-Host "VERSION content: '$version'"
+
+          $stablePattern = '^\d+\.\d+\.\d+$'
+          $betaPattern   = '^\d+\.\d+\.\d+_Beta$'
+          $devPattern    = '^\d+\.\d+\.\d+_Dev$'
+
+          $isMasterPush = "${{ github.ref }}" -eq "refs/heads/master"
+          $isBetaPush = "${{ github.ref }}" -eq "refs/heads/Beta"
+
+          if ($isMasterPush) {
+            # master 分支必须是稳定版
+            if ($version -notmatch $stablePattern) {
+              Write-Error "❌ On 'master', VERSION must be 'x.x.x' (e.g., '1.2.3'). Found: '$version'"
+              exit 1
+            }
+          } elseif ($isBetaPush) {
+            # Beta 分支必须带有 _Beta 后缀
+            if ($version -notmatch $betaPattern) {
+              Write-Error "❌ On 'Beta' branch, VERSION must be 'x.x.x_Beta'. Found: '$version'"
+              exit 1
+            }
+          } else {
+            # 手动触发：允许三种格式
+            if (-not ($version -match $stablePattern -or $version -match $betaPattern -or $version -match $devPattern)) {
+              Write-Error "❌ VERSION must be 'x.x.x', 'x.x.x_Beta', or 'x.x.x_Dev'. Found: '$version'"
+              exit 1
+            }
+          }
+
+      # =============== 构建步骤 ===============
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -35,102 +87,71 @@ jobs:
         run: |
           cmake --build tray/build --config Release
 
-      - name: Create and Prepare Portable Python Environment
+      - name: Create Portable Python Environment
         shell: powershell
         run: |
           $pyVersion = "3.11.9"
           $pyUrl = "https://www.python.org/ftp/python/$pyVersion/python-$pyVersion-embed-amd64.zip"
-          Write-Host "Downloading Embeddable Python from $pyUrl..."
           Invoke-WebRequest -Uri $pyUrl -OutFile "python_embed.zip"
-          
-          Write-Host "Extracting to .venv..."
           Expand-Archive -Path "python_embed.zip" -DestinationPath ".venv"
           
           cd .venv
-          # 1. 允许使用 site-packages：修改 ._pth 文件
           $pthFile = Get-ChildItem -Filter "python*._pth" | Select-Object -First 1
           $content = Get-Content $pthFile.Name
           $content = $content -replace '#import site', 'import site'
           $content | Set-Content $pthFile.Name
           
-          # 2. 安装 pip
-          Write-Host "Installing pip..."
           Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "get-pip.py"
           .\python.exe get-pip.py --no-warn-script-location
-          
-          # 3. 安装项目依赖
-          Write-Host "Installing dependencies..."
           .\python.exe -m pip install -r ..\requirements.txt --no-warn-script-location
           
-          # 4. 清理
-          Remove-Item "get-pip.py"
-          Remove-Item "..\python_embed.zip"
+          Remove-Item "get-pip.py", "..\python_embed.zip"
           cd ..
-          Write-Host "Portable Python environment prepared successfully."
+          Write-Host "✅ Portable Python ready."
 
       - name: Setup Inno Setup Chinese Support
         shell: powershell
         run: |
-          # 检查本地是否已存在语言包，不存在则下载
-          if (Test-Path "ChineseSimplified.isl") {
-              Write-Host "Using existing ChineseSimplified.isl from repository."
-          } else {
-              $url = "https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/master/ChineseSimplified.isl"
-              Write-Host "Downloading ChineseSimplified.isl from $url..."
-              Invoke-WebRequest -Uri $url -OutFile "ChineseSimplified.isl" -ErrorAction Stop
+          if (-not (Test-Path "ChineseSimplified.isl")) {
+            $url = "https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/master/ChineseSimplified.isl"
+            Invoke-WebRequest -Uri $url -OutFile "ChineseSimplified.isl"
           }
-          
-          # 验证文件内容
-          $content = Get-Content "ChineseSimplified.isl" -Raw -Encoding utf8
-          if ($content -notmatch "\[LangOptions\]") {
-              throw "ChineseSimplified.isl is invalid."
+          if ((Get-Content "ChineseSimplified.isl" -Raw) -notmatch "\[LangOptions\]") {
+            throw "Invalid ChineseSimplified.isl"
           }
-          Write-Host "ChineseSimplified.isl verified successfully."
 
-      - name: Build Full Installer with Inno Setup
+      - name: Build Full Installer
+        shell: powershell
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Capture_Push_Setup.iss
-        shell: powershell
 
-      - name: Build Lite Installer with Inno Setup
+      - name: Build Lite Installer
+        shell: powershell
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Capture_Push_Lite_Setup.iss
-        shell: powershell
 
-      - name: Upload Full Installer Artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Capture_Push-Setup-Full
-          path: Output/Capture_Push_Setup.exe
+          name: Installers-${{ github.run_number }}
+          path: |
+            Output/Capture_Push_Setup.exe
+            Output/Capture_Push_Lite_Setup.exe
           retention-days: 3
 
-      - name: Upload Lite Installer Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Capture_Push-Setup-Lite
-          path: Output/Capture_Push_Lite_Setup.exe
-          retention-days: 3
-
+      # =============== 提取版本并准备发布 ===============
       - name: Extract Version
         shell: powershell
         run: |
-          # 确保读取第一行且去空格
           $version = (Get-Content "VERSION" | Select-Object -First 1).Trim()
-          if ($version) {
-            Write-Host "Extracted version: $version"
-            Add-Content -Path $env:GITHUB_ENV -Value "APP_VERSION=$version"
-            
-            # 创建符合 Tag 规范的版本号（下划线转连字符）
-            $tagVersion = "v$version" -replace "_", "-"
-            Add-Content -Path $env:GITHUB_ENV -Value "TAG_VERSION=$tagVersion"
-          } else {
-            Write-Error "Could not read version from VERSION file"
-            exit 1
-          }
+          Add-Content -Path $env:GITHUB_ENV -Value "APP_VERSION=$version"
+          $tagVersion = "v$version" -replace "_", "-"
+          Add-Content -Path $env:GITHUB_ENV -Value "TAG_VERSION=$tagVersion"
 
+      # =============== 条件性发布 Release ===============
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/master'
+        if: ${{ !contains(env.APP_VERSION, '_Dev') && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/Beta' || github.event_name == 'workflow_dispatch') }}
         with:
           files: |
             Output/Capture_Push_Setup.exe
@@ -138,17 +159,15 @@ jobs:
           tag_name: ${{ env.TAG_VERSION }}
           name: Release ${{ env.APP_VERSION }}
           body: |
-            Automated Build Release
-            - Version: ${{ env.APP_VERSION }}
-            - Build Number: ${{ github.run_number }}
-            - Build Date: ${{ github.event.head_commit.timestamp || 'Manual Trigger' }}
+            Version: ${{ env.APP_VERSION }}
+            Build: ${{ github.run_number }}
+            Branch: ${{ github.ref_name }}
             
-            ## 安装包说明
-            - **Capture_Push_Setup.exe**：完整版安装包，包含 Python 运行环境（约 200-500 MB）
-            - **Capture_Push_Lite_Setup.exe**：轻量级更新包，仅更新程序文件，不包含 Python 环境（约 2-10 MB）
-            
-            ⚠️ **首次安装请下载完整版，已安装用户可使用轻量级包快速更新**
+            ## Packages
+            - **Full**: Includes Python runtime (~200-500 MB)
+            - **Lite**: Program-only update (~2-10 MB)
           draft: false
-          prerelease: false
+          # 如果是 Beta 分支，或者版本号包含 _Beta，或者手动勾选了 prerelease，则标记为预发布
+          prerelease: ${{ github.ref == 'refs/heads/Beta' || contains(env.APP_VERSION, '_Beta') || github.event.inputs.prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
