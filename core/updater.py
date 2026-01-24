@@ -193,23 +193,31 @@ class Updater:
         """
         try:
             # 1. 处理后缀 (Beta, Dev 等)
-            # 格式: x.x.x_xxxx
-            v1_parts = v1.split('_')
-            v2_parts = v2.split('_')
+            # 格式: x.x.x-Beta, x.x.x_Beta, x.x.x.Dev 等
+            import re
             
-            v1_base = v1_parts[0].replace('_', '.')
-            v2_base = v2_parts[0].replace('_', '.')
+            # 使用正则表达式分离版本号和后缀
+            v1_match = re.match(r'^([0-9]+(?:\.[0-9]+)*)([-_.]?([a-zA-Z0-9]+.*))?$', v1)
+            v2_match = re.match(r'^([0-9]+(?:\.[0-9]+)*)([-_.]?([a-zA-Z0-9]+.*))?$', v2)
+            
+            v1_base = v1_match.group(1) if v1_match else v1
+            v1_suffix = v1_match.group(3) if v1_match and v1_match.group(3) else ''
+            
+            v2_base = v2_match.group(1) if v2_match else v2
+            v2_suffix = v2_match.group(3) if v2_match and v2_match.group(3) else ''
             
             # 2. 比较基础版本 (x.x.x)
-            parts1 = [int(x) for x in v1_base.split('.')]
-            parts2 = [int(x) for x in v2_base.split('.')]
+            parts1 = [int(x) for x in v1_base.split('.') if x.isdigit()]
+            parts2 = [int(x) for x in v2_base.split('.') if x.isdigit()]
             
+            # 比较每个版本段
             for p1, p2 in zip(parts1, parts2):
                 if p1 > p2:
                     return 1
                 elif p1 < p2:
                     return -1
             
+            # 如果一个版本有更多的段且数值更大，则认为它更新
             if len(parts1) > len(parts2):
                 return 1
             elif len(parts1) < len(parts2):
@@ -217,22 +225,22 @@ class Updater:
             
             # 3. 基础版本相同，比较后缀
             # 规则: 
-            # - 无后缀 (正式版) > 有后缀 (Beta/Dev)
-            # - 有后缀时，按字母顺序比较 (Beta > Dev)
+            # - 无后缀 (正式版) > 有后缀 (Beta/Dev等)
+            # - 有后缀时，按字母顺序比较
             
-            # 情况 A: 远程是正式版，本地是预发布版 -> 升级
-            if len(v1_parts) == 1 and len(v2_parts) > 1:
+            # 情况 A: 远程是正式版，本地有后缀 -> 升级
+            if not v1_suffix and v2_suffix:
                 return 1
             
-            # 情况 B: 远程是预发布版，本地是正式版 -> 不升级 (回退)
-            if len(v1_parts) > 1 and len(v2_parts) == 1:
+            # 情况 B: 远程有后缀，本地是正式版 -> 不升级 (回退)
+            if v1_suffix and not v2_suffix:
                 return -1
             
-            # 情况 C: 两者都是预发布版 -> 比较后缀字符串
-            if len(v1_parts) > 1 and len(v2_parts) > 1:
-                if v1_parts[1] > v2_parts[1]:
+            # 情况 C: 两者都有后缀 -> 比较后缀字符串
+            if v1_suffix and v2_suffix:
+                if v1_suffix.lower() > v2_suffix.lower():
                     return 1
-                elif v1_parts[1] < v2_parts[1]:
+                elif v1_suffix.lower() < v2_suffix.lower():
                     return -1
             
             return 0
