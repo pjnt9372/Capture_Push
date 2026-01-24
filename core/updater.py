@@ -193,18 +193,21 @@ class Updater:
         """
         try:
             # 1. 处理后缀 (Beta, Dev 等)
-            # 格式: x.x.x-Beta, x.x.x_Beta, x.x.x.Dev 等
+            # 格式: x.x.x, x.x.x_Beta, x.x.x_Dev (严格按照 GitHub Actions 规则)
             import re
             
-            # 使用正则表达式分离版本号和后缀
-            v1_match = re.match(r'^([0-9]+(?:\.[0-9]+)*)([-_.]?([a-zA-Z0-9]+.*))?$', v1)
-            v2_match = re.match(r'^([0-9]+(?:\.[0-9]+)*)([-_.]?([a-zA-Z0-9]+.*))?$', v2)
+            # 使用正则表达式分离版本号和后缀，严格按照 GitHub Actions 规则
+            # 稳定版: ^\d+\.\d+\.\d+$
+            # Beta版: ^\d+\.\d+\.\d+_Beta$
+            # Dev版: ^\d+\.\d+\.\d+_Dev$
+            v1_match = re.match(r'^([0-9]+\.[0-9]+\.[0-9]+)(_(Beta|Dev))?$', v1)
+            v2_match = re.match(r'^([0-9]+\.[0-9]+\.[0-9]+)(_(Beta|Dev))?$', v2)
             
             v1_base = v1_match.group(1) if v1_match else v1
-            v1_suffix = v1_match.group(3) if v1_match and v1_match.group(3) else ''
+            v1_suffix = v1_match.group(2)[1:] if v1_match and v1_match.group(2) else ''  # 去掉下划线前缀
             
             v2_base = v2_match.group(1) if v2_match else v2
-            v2_suffix = v2_match.group(3) if v2_match and v2_match.group(3) else ''
+            v2_suffix = v2_match.group(2)[1:] if v2_match and v2_match.group(2) else ''  # 去掉下划线前缀
             
             # 2. 比较基础版本 (x.x.x)
             parts1 = [int(x) for x in v1_base.split('.') if x.isdigit()]

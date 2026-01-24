@@ -80,10 +80,8 @@ class FeishuSender:
             timestamp = str(int(time.time()))
             sign = gen_sign(timestamp, secret)
             # 将时间戳和签名作为查询参数添加到webhook URL
-            if '?' in webhook_url:
-                webhook_url_with_params = f"{webhook_url}&timestamp={timestamp}&sign={sign}"
-            else:
-                webhook_url_with_params = f"{webhook_url}?timestamp={timestamp}&sign={sign}"
+            separator = '&' if '?' in webhook_url else '?'
+            webhook_url_with_params = f"{webhook_url}{separator}timestamp={timestamp}&sign={sign}"
         else:
             webhook_url_with_params = webhook_url
 

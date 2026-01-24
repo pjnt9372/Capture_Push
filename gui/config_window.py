@@ -271,8 +271,8 @@ class ConfigWindow(QWidget):
         serverchan_form.addRow("SendKey", self.serverchan_sendkey)
         layout.addWidget(self.serverchan_collapsible)
 
-        # 连接推送方式选择的信号，以便自动展开对应的配置组并保存
-        self.push_button_group.buttonClicked.connect(lambda: self.on_push_method_changed(auto_save=True))
+        # 连接推送方式选择的信号，以便自动展开对应的配置组
+        self.push_button_group.buttonClicked.connect(self.on_push_method_changed_no_save)
 
         layout.addStretch()
         return tab
@@ -501,6 +501,21 @@ class ConfigWindow(QWidget):
         # 只有在auto_save为True时才保存配置
         if auto_save:
             self._save_config_to_file()
+
+    def on_push_method_changed_no_save(self):
+        """仅根据推送方式选择展开对应的配置组，不自动保存配置"""
+        # 默认折叠所有配置组
+        self.email_collapsible.toggle_button.setChecked(False)
+        self.feishu_collapsible.toggle_button.setChecked(False)
+        self.serverchan_collapsible.toggle_button.setChecked(False)
+        
+        # 展开当前选中的推送方式对应的配置组
+        if self.push_email_radio.isChecked():
+            self.email_collapsible.toggle_button.setChecked(True)
+        elif self.push_feishu_radio.isChecked():
+            self.feishu_collapsible.toggle_button.setChecked(True)
+        elif self.push_serverchan_radio.isChecked():
+            self.serverchan_collapsible.toggle_button.setChecked(True)
 
     def _save_config_to_file(self):
         """将配置保存到文件"""
