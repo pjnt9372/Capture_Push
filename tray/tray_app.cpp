@@ -423,7 +423,19 @@ void ReadLoopConfig() {
     std::string line;
     std::string current_section;
     
+    // 验证配置内容的基本格式
+    if (config_content.empty()) {
+        LogMessage("Warning: Config file is empty, using default settings.", LOG_WARN);
+        return;
+    }
+    
     while (std::getline(config_stream, line)) {
+        // 检查是否为有效的配置行
+        if (line.length() > 1000) {  // 防止超长行
+            LogMessage("Skipping overly long line in config file.", LOG_WARN);
+            continue;
+        }
+        
         line.erase(0, line.find_first_not_of(" \t\r\n"));
         line.erase(line.find_last_not_of(" \t\r\n") + 1);
         
@@ -442,6 +454,12 @@ void ReadLoopConfig() {
             key.erase(key.find_last_not_of(" \t") + 1);
             value.erase(0, value.find_first_not_of(" \t"));
             value.erase(value.find_last_not_of(" \t") + 1);
+            
+            // 验证key和value长度
+            if (key.length() > 100 || value.length() > 1000) {
+                LogMessage("Warning: Skipping config entry with overly long key or value.", LOG_WARN);
+                continue;
+            }
             
             // 处理日志级别配置
             if (current_section == "logging") {
@@ -467,23 +485,61 @@ void ReadLoopConfig() {
                 }
             } else if (current_section == "loop_getCourseGrades") {
                 if (key == "enabled") {
-                    g_loop_config.grade_enabled = (value == "True" || value == "true" || value == "1");
+                    try {
+                        g_loop_config.grade_enabled = (value == "True" || value == "true" || value == "1");
+                    } catch (...) {
+                        LogMessage("Invalid value for grade_enabled, using default.", LOG_WARN);
+                    }
                 } else if (key == "time") {
-                    g_loop_config.grade_interval = std::stoi(value);
+                    try {
+                        g_loop_config.grade_interval = std::stoi(value);
+                        // 验证时间间隔的合理性（至少60秒）
+                        if (g_loop_config.grade_interval < 60) {
+                            g_loop_config.grade_interval = 60; // 最小值为60秒
+                            LogMessage("Grade interval adjusted to minimum 60 seconds.", LOG_WARN);
+                        }
+                    } catch (...) {
+                        LogMessage("Invalid value for grade time interval, using default.", LOG_WARN);
+                    }
                 }
             } else if (current_section == "loop_getCourseSchedule") {
                 if (key == "enabled") {
-                    g_loop_config.schedule_enabled = (value == "True" || value == "true" || value == "1");
+                    try {
+                        g_loop_config.schedule_enabled = (value == "True" || value == "true" || value == "1");
+                    } catch (...) {
+                        LogMessage("Invalid value for schedule_enabled, using default.", LOG_WARN);
+                    }
                 } else if (key == "time") {
-                    g_loop_config.schedule_interval = std::stoi(value);
+                    try {
+                        g_loop_config.schedule_interval = std::stoi(value);
+                        // 验证时间间隔的合理性（至少60秒）
+                        if (g_loop_config.schedule_interval < 60) {
+                            g_loop_config.schedule_interval = 60; // 最小值为60秒
+                            LogMessage("Schedule interval adjusted to minimum 60 seconds.", LOG_WARN);
+                        }
+                    } catch (...) {
+                        LogMessage("Invalid value for schedule time interval, using default.", LOG_WARN);
+                    }
                 }
             } else if (current_section == "schedule_push") {
                 if (key == "today_8am") {
-                    g_loop_config.push_today_8am = (value == "True" || value == "true" || value == "1");
+                    try {
+                        g_loop_config.push_today_8am = (value == "True" || value == "true" || value == "1");
+                    } catch (...) {
+                        LogMessage("Invalid value for today_8am, using default.", LOG_WARN);
+                    }
                 } else if (key == "tomorrow_9pm") {
-                    g_loop_config.push_tomorrow_9pm = (value == "True" || value == "true" || value == "1");
+                    try {
+                        g_loop_config.push_tomorrow_9pm = (value == "True" || value == "true" || value == "1");
+                    } catch (...) {
+                        LogMessage("Invalid value for tomorrow_9pm, using default.", LOG_WARN);
+                    }
                 } else if (key == "next_week_sunday") {
-                    g_loop_config.push_next_week_sunday = (value == "True" || value == "true" || value == "1");
+                    try {
+                        g_loop_config.push_next_week_sunday = (value == "True" || value == "true" || value == "1");
+                    } catch (...) {
+                        LogMessage("Invalid value for next_week_sunday, using default.", LOG_WARN);
+                    }
                 }
             }
         }

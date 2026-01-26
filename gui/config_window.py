@@ -14,10 +14,10 @@ from PySide6.QtCore import Qt, QDate, QUrl, QSize, QTime
 BASE_DIR = Path(__file__).resolve().parent.parent
 try:
     from log import get_config_path, get_log_file_path
-    from config_manager import load_config, save_config as save_config_manager
+    from config_manager import load_config, save_config as save_config_manager, ConfigDecodingError
 except ImportError:
     from core.log import get_config_path, get_log_file_path
-    from core.config_manager import load_config, save_config as save_config_manager
+    from core.config_manager import load_config, save_config as save_config_manager, ConfigDecodingError
 
 try:
     from school import get_available_schools
@@ -109,7 +109,28 @@ class ConfigWindow(QWidget):
         font.setPointSize(10)
         self.setFont(font)
 
-        self.cfg = load_config()
+        try:
+            self.cfg = load_config()
+        except ConfigDecodingError as e:
+            # 显示配置文件解码错误的UI提示
+            QMessageBox.critical(
+                self,
+                "配置文件错误",
+                f"配置文件解码失败：\n{str(e)}\n\n建议重新配置（前往配置工具关于界面清除配置文件）或联系作者。",
+                QMessageBox.Ok
+            )
+            # 创建一个空的配置对象作为备用
+            self.cfg = configparser.ConfigParser()
+        except Exception as e:
+            # 显示其他配置加载错误的UI提示
+            QMessageBox.critical(
+                self,
+                "配置加载错误",
+                f"加载配置时发生未知错误：\n{str(e)}\n\n建议重新配置（前往配置工具关于界面清除配置文件）或联系作者。",
+                QMessageBox.Ok
+            )
+            # 创建一个空的配置对象作为备用
+            self.cfg = configparser.ConfigParser()
 
         self.init_ui()
         self.load_config()
@@ -989,7 +1010,14 @@ class ConfigWindow(QWidget):
         reply = QMessageBox.question(
             self,
             "日志上报",
-            "是否要打包所有日志文件并生成日志报告？\n\n报告将保存在您的桌面。",
+            "是否要打包所有日志文件和本机硬件信息并生成日志报告？\n\n"
+            "注意：报告将包含以下硬件信息：\n"
+            "• 操作系统版本\n"
+            "• 处理器型号\n"
+            "• 内存大小\n"
+            "• 磁盘信息\n"
+            "• Windows更新补丁信息（如适用）\n\n"
+            "报告将保存在您的桌面。",
             QMessageBox.Yes | QMessageBox.No
         )
         

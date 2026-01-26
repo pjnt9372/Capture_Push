@@ -9,6 +9,8 @@ import logging.config
 import logging.handlers
 import sys
 import os
+import platform
+import subprocess
 import configparser
 import datetime
 import shutil
@@ -26,6 +28,7 @@ except ImportError:
 def pack_logs():
     """
     将 AppData 中的日志目录打包成ZIP压缩包并放在桌面。
+    包含本机硬件相关信息。
     返回打包文件的路径。
     """
     def get_desktop_path():
@@ -50,6 +53,81 @@ def pack_logs():
                 # 最终回退到用户目录下的Desktop
                 return Path(os.path.expanduser("~/Desktop"))
 
+    def collect_hardware_info():
+        """收集本机硬件信息"""
+        hardware_info = []
+        hardware_info.append(f"Capture Push 硬件信息报告")
+        hardware_info.append(f"生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        hardware_info.append("="*50)
+        
+        # 系统信息
+        hardware_info.append(f"操作系统: {platform.system()}")
+        hardware_info.append(f"操作系统版本: {platform.version()}")
+        hardware_info.append(f"操作系统发行版: {platform.platform()}")
+        hardware_info.append(f"计算机架构: {platform.architecture()[0]}")
+        hardware_info.append(f"机器类型: {platform.machine()}")
+        hardware_info.append(f"处理器: {platform.processor()}")
+        hardware_info.append(f"CPU 信息: {platform.uname().processor}")
+        
+        # 内存信息 (Windows)
+        if platform.system() == "Windows":
+            try:
+                # 使用wmic命令获取更详细的硬件信息
+                mem_info = subprocess.run(['wmic', 'computersystem', 'get', 'TotalPhysicalMemory'], 
+                                          capture_output=True, text=True, timeout=10)
+                if mem_info.returncode == 0:
+                    lines = mem_info.stdout.strip().split('\n')
+                    if len(lines) > 1:
+                        total_mem = lines[1].strip()
+                        if total_mem:
+                            hardware_info.append(f"物理内存: {total_mem} bytes")
+                
+                # 获取磁盘信息
+                disk_info = subprocess.run(['wmic', 'logicaldisk', 'get', 'size,freespace,caption'], 
+                                           capture_output=True, text=True, timeout=10)
+                if disk_info.returncode == 0:
+                    hardware_info.append("磁盘信息:")
+                    lines = disk_info.stdout.strip().split('\n')
+                    for line in lines[1:]:  # 跳过标题行
+                        line = line.strip()
+                        if line:
+                            hardware_info.append(f"  {line}")
+                            
+                # 获取Windows更新补丁信息
+                try:
+                    # 使用wmic获取最近安装的补丁
+                    patches_info = subprocess.run(['wmic', 'qfe', 'get', 'HotFixID,InstalledOn,Description'], 
+                                               capture_output=True, text=True, timeout=15)
+                    if patches_info.returncode == 0:
+                        lines = patches_info.stdout.strip().split('\n')
+                        if len(lines) > 1:
+                            hardware_info.append("Windows更新补丁:")
+                            # 提取并格式化补丁信息（跳过标题行）
+                            for line in lines[1:]:
+                                line = line.strip()
+                                if line:
+                                    # 清理多余的空白字符
+                                    clean_line = ' '.join(line.split())
+                                    if clean_line:  # 确保不是空行
+                                        hardware_info.append(f"  {clean_line}")
+                        else:
+                            hardware_info.append("Windows更新补丁: 无信息或无法获取")
+                except Exception as patch_error:
+                    hardware_info.append(f"Windows更新补丁: 获取失败 ({str(patch_error)})")
+                    
+            except Exception as e:
+                hardware_info.append(f"获取详细硬件信息失败: {str(e)}")
+        else:
+            # 非Windows系统使用通用方法
+            try:
+                mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')  
+                mem_gib = mem_bytes / (1024.**3)
+                hardware_info.append(f"物理内存: ~{mem_gib:.2f} GB")
+            except:
+                hardware_info.append("物理内存: 无法获取")
+        
+        return "\n".join(hardware_info)
+
     try:
         localappdata = os.environ.get('LOCALAPPDATA')
         if not localappdata:
@@ -65,7 +143,7 @@ def pack_logs():
         archive_name = f"capture_push_log_report_{timestamp}.zip"
         archive_path = desktop_path / archive_name
 
-        # 创建ZIP文件并添加日志文件
+        # 创建ZIP文件并添加日志文件和硬件信息
         with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             # 添加所有日志文件
             for log_file_path in log_dir.glob("*.log"):
@@ -75,6 +153,10 @@ def pack_logs():
             config_file = log_dir / 'config.ini'
             if config_file.exists():
                 zipf.write(config_file, config_file.name)
+            
+            # 添加硬件信息到ZIP文件
+            hardware_info_content = collect_hardware_info()
+            zipf.writestr("hardware_info.txt", hardware_info_content)
         
         return str(archive_path)
     except Exception as e:
@@ -205,12 +287,19 @@ def init_logger(module_name):
     
     # 2. 读取配置文件获取日志级别
     try:
-        from core.config_manager import load_config
+        from core.config_manager import load_config, ConfigDecodingError
         config = load_config()
     except ImportError:
         # 兜底：如果无法从 config_manager 导入，尝试普通读取
         config = configparser.ConfigParser()
-        config.read(str(config_path), encoding='utf-8')
+        try:
+            config.read(str(config_path), encoding='utf-8')
+        except Exception:
+            # 如果配置文件无法读取，使用默认配置
+            config = configparser.ConfigParser()
+    except ConfigDecodingError:
+        # 如果配置文件解码错误，使用默认配置
+        config = configparser.ConfigParser()
     
     log_level_str = config.get('logging', 'level', fallback='DEBUG')
     log_level = getattr(logging, log_level_str.upper(), logging.DEBUG)

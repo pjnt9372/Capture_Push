@@ -6,6 +6,12 @@ from pathlib import Path
 from core.log import get_config_path
 from core.utils import dpapi
 
+
+class ConfigDecodingError(Exception):
+    """配置文件解码错误"""
+    pass
+
+
 def load_config():
     """读取并自动解密配置文件"""
     config_path = str(get_config_path())
@@ -25,12 +31,23 @@ def load_config():
             cfg.read_string(content)
         except Exception:
             # 如果解密失败，说明是明文或损坏，尝试以 utf-8 读取
-            content = raw_data.decode('utf-8')
-            cfg.read_string(content)
+            try:
+                content = raw_data.decode('utf-8')
+                cfg.read_string(content)
+            except UnicodeDecodeError:
+                # 如果UTF-8解码也失败，说明文件编码有问题
+                raise ConfigDecodingError(f"配置文件编码错误，无法解码: {config_path}")
+    except ConfigDecodingError:
+        # 重新抛出配置解码错误
+        raise
     except Exception as e:
         # 兜底：直接使用 configparser 读取（可能还是会失败，但这是最后尝试）
-        cfg.read(config_path, encoding='utf-8')
-    
+        try:
+            cfg.read(config_path, encoding='utf-8')
+        except Exception as final_error:
+            # 如果所有方法都失败，抛出配置解码错误
+            raise ConfigDecodingError(f"配置文件格式错误，无法解析: {str(final_error)}")
+
     return cfg
 
 def save_config(cfg):
