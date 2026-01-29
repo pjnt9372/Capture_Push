@@ -11,6 +11,15 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon
 
+# 导入日志模块
+try:
+    from log import init_logger
+except ImportError:
+    from core.log import init_logger
+
+# 初始化日志记录器
+logger = init_logger("schedule_window")
+
 # 动态获取基础目录和配置路径
 BASE_DIR = Path(__file__).resolve().parent.parent
 try:

@@ -5,10 +5,20 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, 
     QFormLayout, QMessageBox, QCheckBox, QSpinBox, QHBoxLayout, 
     QGroupBox, QRadioButton, QButtonGroup, QTabWidget, QComboBox, 
-    QDateEdit, QApplication, QToolButton, QTimeEdit, QScrollArea,QFileDialog
+    QDateEdit, QApplication, QToolButton, QTimeEdit, QScrollArea,QFileDialog,
+    QGridLayout
 )
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtCore import Qt, QDate, QUrl, QSize, QTime
+
+# 导入日志模块
+try:
+    from log import init_logger
+except ImportError:
+    from core.log import init_logger
+
+# 初始化日志记录器
+logger = init_logger("config_window")
 
 # 动态获取基础目录和配置路径
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -100,6 +110,7 @@ APP_VERSION = get_app_version()
 class ConfigWindow(QWidget):
     """主配置窗口"""
     def __init__(self):
+        logger.info("配置窗口初始化开始")
         super().__init__()
         self.setWindowTitle("Capture_Push · 设置")
         self.resize(500, 650)
@@ -112,6 +123,7 @@ class ConfigWindow(QWidget):
             if icon_path.exists():
                 self.setWindowIcon(QIcon(str(icon_path)))
         except Exception as e:
+            logger.error(f"无法设置窗口图标: {e}")
             print(f"无法设置窗口图标: {e}")
         
         # 放大全局字体以确保看清
@@ -120,8 +132,11 @@ class ConfigWindow(QWidget):
         self.setFont(font)
 
         try:
+            logger.info("正在加载配置")
             self.cfg = load_config()
+            logger.info("配置加载成功")
         except ConfigDecodingError as e:
+            logger.error(f"配置文件解码失败: {e}")
             # 显示配置文件解码错误的UI提示
             QMessageBox.critical(
                 self,
@@ -132,6 +147,7 @@ class ConfigWindow(QWidget):
             # 创建一个空的配置对象作为备用
             self.cfg = configparser.ConfigParser()
         except Exception as e:
+            logger.error(f"加载配置时发生未知错误: {e}")
             # 显示其他配置加载错误的UI提示
             QMessageBox.critical(
                 self,
@@ -142,8 +158,11 @@ class ConfigWindow(QWidget):
             # 创建一个空的配置对象作为备用
             self.cfg = configparser.ConfigParser()
 
+        logger.info("正在初始化UI")
         self.init_ui()
+        logger.info("正在加载配置到UI")
         self.load_config()
+        logger.info("配置窗口初始化完成")
 
     def create_collapsible_group(self, title, group_name):
         """创建可折叠的配置组"""
@@ -482,6 +501,25 @@ class ConfigWindow(QWidget):
         """)
         clear_config_btn.clicked.connect(self.clear_config)
 
+        # 修复安装按钮
+        repair_btn = QPushButton("修复安装")
+        repair_btn.setCursor(Qt.PointingHandCursor)
+        repair_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #28a745;
+                color: #28a745;
+                padding: 5px 15px;
+                border-radius: 3px;
+                background: white;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background: #28a745;
+                color: white;
+            }
+        """)
+        repair_btn.clicked.connect(self.repair_installation)
+
         # 调整日志级别和运行模式按钮
         adjust_log_run_btn = QPushButton("调整日志/运行模式")
         adjust_log_run_btn.setCursor(Qt.PointingHandCursor)
@@ -513,22 +551,27 @@ class ConfigWindow(QWidget):
         layout.addWidget(github_btn)
         layout.addSpacing(10)
         
+        # 创建按钮网格布局
+        button_grid = QGridLayout()
+        button_grid.setSpacing(10)
+        
         # 第一行按钮
-        btn_row1 = QHBoxLayout()
-        btn_row1.addStretch()
-        btn_row1.addWidget(update_btn)
-        btn_row1.addWidget(crash_report_btn)
-        btn_row1.addStretch()
-        layout.addLayout(btn_row1)
+        button_grid.addWidget(update_btn, 0, 0)
+        button_grid.addWidget(crash_report_btn, 0, 1)
         
         # 第二行按钮
-        btn_row2 = QHBoxLayout()
-        btn_row2.addStretch()
-        btn_row2.addWidget(export_config_btn)
-        btn_row2.addWidget(clear_config_btn)
-        btn_row2.addWidget(adjust_log_run_btn)
-        btn_row2.addStretch()
-        layout.addLayout(btn_row2)
+        button_grid.addWidget(export_config_btn, 1, 0)
+        button_grid.addWidget(clear_config_btn, 1, 1)
+        
+        # 第三行按钮
+        button_grid.addWidget(repair_btn, 2, 0)
+        button_grid.addWidget(adjust_log_run_btn, 2, 1)
+        
+        # 设置列的伸缩因子，使按钮居中
+        button_grid.setColumnStretch(0, 1)
+        button_grid.setColumnStretch(1, 1)
+        
+        layout.addLayout(button_grid)
         
         layout.addSpacing(20)
         layout.addWidget(author_label)
@@ -609,10 +652,13 @@ class ConfigWindow(QWidget):
         self.on_push_method_changed(auto_save=False)
 
     def save_config(self):
+        logger.info("开始保存配置")
         # 检查 Outlook
         sender = self.sender.text().strip().lower()
         if any(sender.endswith(d) for d in ["outlook.com", "hotmail.com", "live.com", "msn.com"]):
+            logger.warning(f"检测到不支持的邮箱类型: {sender}")
             QMessageBox.critical(self, "不支持的邮箱", "Outlook/Hotmail 等微软邮箱由于强制 OAuth2 认证，目前无法使用基本认证发送邮件，请更换发件人邮箱。")
+            logger.info("配置保存被取消")
             return
 
         # 写入内存
@@ -627,32 +673,39 @@ class ConfigWindow(QWidget):
         self.cfg["school_time"]["evening_count"] = str(self.evening_count.value())
         self.cfg["school_time"]["class_duration"] = str(self.class_duration.value())
         self.cfg["school_time"]["first_class_start"] = self.first_class_start.time().toString("HH:mm")
+        logger.debug(f"已保存学校时间配置: morning={self.morning_count.value()}, afternoon={self.afternoon_count.value()}, evening={self.evening_count.value()}")
         
         class_times = [edit.text() for edit in self.class_time_edits]
         self.cfg["school_time"]["class_times"] = ",".join(class_times)
+        logger.debug(f"已保存课时时间配置: {len(class_times)} 个时间段")
 
         if "semester" not in self.cfg: self.cfg["semester"] = {}
         self.cfg["semester"]["first_monday"] = self.first_monday.date().toString("yyyy-MM-dd")
+        logger.debug(f"已保存学期配置: first_monday={self.first_monday.date().toString('yyyy-MM-dd')}")
 
         if "loop_getCourseGrades" not in self.cfg: self.cfg["loop_getCourseGrades"] = {}
         self.cfg["loop_getCourseGrades"]["enabled"] = str(self.loop_grade_enabled.isChecked())
         self.cfg["loop_getCourseGrades"]["time"] = str(self.loop_grade_interval.value())
+        logger.debug(f"已保存成绩循环配置: enabled={self.loop_grade_enabled.isChecked()}, interval={self.loop_grade_interval.value()}")
 
         if "loop_getCourseSchedule" not in self.cfg: self.cfg["loop_getCourseSchedule"] = {}
         self.cfg["loop_getCourseSchedule"]["enabled"] = str(self.loop_schedule_enabled.isChecked())
         self.cfg["loop_getCourseSchedule"]["time"] = str(self.loop_schedule_interval.value())
+        logger.debug(f"已保存课表循环配置: enabled={self.loop_schedule_enabled.isChecked()}, interval={self.loop_schedule_interval.value()}")
 
         if "schedule_push" not in self.cfg:
             self.cfg["schedule_push"] = {}
         self.cfg["schedule_push"]["today_8am"] = str(self.push_today_enabled.isChecked())
         self.cfg["schedule_push"]["tomorrow_9pm"] = str(self.push_tomorrow_enabled.isChecked())
         self.cfg["schedule_push"]["next_week_sunday"] = str(self.push_next_week_enabled.isChecked())
+        logger.debug(f"已保存定时推送配置: today_8am={self.push_today_enabled.isChecked()}, tomorrow_9pm={self.push_tomorrow_enabled.isChecked()}, next_week_sunday={self.push_next_week_enabled.isChecked()}")
 
         if "push" not in self.cfg: self.cfg["push"] = {}
         if self.push_email_radio.isChecked(): self.cfg["push"]["method"] = "email"
         elif self.push_feishu_radio.isChecked(): self.cfg["push"]["method"] = "feishu"
         elif self.push_serverchan_radio.isChecked(): self.cfg["push"]["method"] = "serverchan"
         else: self.cfg["push"]["method"] = "none"
+        logger.debug(f"已保存推送方式: {self.cfg['push']['method']}")
 
         if "email" not in self.cfg: self.cfg["email"] = {}
         self.cfg["email"]["smtp"] = self.smtp.text()
@@ -660,25 +713,32 @@ class ConfigWindow(QWidget):
         self.cfg["email"]["sender"] = self.sender.text()
         self.cfg["email"]["receiver"] = self.receiver.text()
         self.cfg["email"]["auth"] = self.auth.text()
+        logger.debug(f"已保存邮件配置: smtp={self.smtp.text()}, sender={self.sender.text()}")
 
         if "feishu" not in self.cfg: self.cfg["feishu"] = {}
         self.cfg["feishu"]["webhook_url"] = self.feishu_webhook.text()
         self.cfg["feishu"]["secret"] = self.feishu_secret.text()
+        logger.debug(f"已保存飞书配置: webhook_url={'***' if self.feishu_webhook.text() else 'empty'}, secret={'***' if self.feishu_secret.text() else 'empty'}")
 
         if "serverchan" not in self.cfg: self.cfg["serverchan"] = {}
         self.cfg["serverchan"]["sendkey"] = self.serverchan_sendkey.text()
+        logger.debug(f"已保存Server酱配置: sendkey={'***' if self.serverchan_sendkey.text() else 'empty'}")
         
         # 自启动设置
         autostart = self.autostart_enabled.isChecked()
         if "software_settings" not in self.cfg:
             self.cfg["software_settings"] = {}
         self.cfg["software_settings"]["autostart_tray"] = str(autostart)
+        logger.debug(f"已保存自启动配置: autostart={autostart}")
         
         # 同步更新系统自启动设置
+        logger.info("正在更新系统自启动设置")
         self._update_autostart_registry(autostart)
         
         # 物理保存
+        logger.info("正在保存配置文件")
         self._save_config_to_file()
+        logger.info("配置保存完成")
 
     def _update_autostart_registry(self, enabled):
         """更新 Windows 注册表自启动项"""
@@ -717,15 +777,16 @@ class ConfigWindow(QWidget):
 
     def export_plaintext_config(self):
         """ 导出明文配置（需先验证 Windows Hello） """
-        print(">>> 发起配置导出请求，正在调起 Windows Hello 验证...")
+        logger.info("发起配置导出请求，正在调起 Windows Hello 验证...")
         
         # 1. 首先进行 Windows Hello 验证
         if not self.verify_windows_hello():
+            logger.warning("Windows 身份验证未通过或已取消，无法导出配置。")
             QMessageBox.warning(self, "验证取消", "Windows 身份验证未通过或已取消，无法导出配置。")
-            print("<<< Windows 身份验证未通过或已取消。")
+            logger.info("Windows 身份验证未通过或已取消。")
             return
 
-        print(">>> Windows 身份验证成功。")
+        logger.info("Windows 身份验证成功。")
 
         # 2. 验证通过，执行导出逻辑
         try:
@@ -744,7 +805,7 @@ class ConfigWindow(QWidget):
             )
             
             if not file_path:
-                print(">>> 用户取消了文件保存")
+                logger.info("用户取消了文件保存")
                 return
 
             # 加载当前加密配置字典
@@ -771,12 +832,13 @@ class ConfigWindow(QWidget):
             with open(file_path, 'w', encoding='utf-8') as f:
                 plaintext_cfg.write(f)
                 
+            logger.info(f"配置成功导出至: {file_path}")
             QMessageBox.information(self, "成功", f"明文配置已导出至：\n{file_path}\n\n请注意：此文件包含明文密码，请妥善保管！")
-            print(f">>> 配置成功导出至: {file_path}")
 
         except Exception as e:
+            logger.error(f"导出过程中发生错误: {e}")
             QMessageBox.critical(self, "导出失败", f"导出过程中发生错误：\n{str(e)}")
-            print(f"!!! 导出明文配置失败: {e}")
+            logger.error(f"导出明文配置失败: {e}")
             import traceback
             traceback.print_exc()
 
@@ -941,6 +1003,35 @@ class ConfigWindow(QWidget):
                 QMessageBox.information(self, "清除成功", "配置已清除，请重新配置各项信息。")
             except Exception as e:
                 QMessageBox.critical(self, "清除失败", f"清除配置文件时出错：\n{str(e)}")
+
+    def repair_installation(self):
+        """修复安装功能"""
+        reply = QMessageBox.question(
+            self, "修复安装", 
+            "是否执行修复安装？此操作将重新验证安装包完整性并重新安装。\n\n" +
+            "修复安装将：\n" +
+            "1. 检查本地保存的安装包\n" +
+            "2. 验证安装包的完整性\n" +
+            "3. 执行静默修复安装\n\n" +
+            "注意：此操作将重启应用程序。",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                from core.updater import Updater
+                
+                updater = Updater()
+                # 使用轻量级安装包进行修复
+                success = updater.repair_installation(use_lite=True)
+                
+                if success:
+                    QMessageBox.information(self, "修复成功", "修复安装已完成，应用程序将退出，请重新启动。")
+                    QApplication.quit()
+                else:
+                    QMessageBox.critical(self, "修复失败", "修复安装未能成功完成，请检查日志或重新下载安装包。")
+            except Exception as e:
+                QMessageBox.critical(self, "修复错误", f"执行修复安装时出现错误：\n{str(e)}")
 
     def adjust_logging_and_run_model(self):
         """调整日志级别和运行模式"""
@@ -1268,34 +1359,34 @@ class ConfigWindow(QWidget):
         features_layout = QVBoxLayout(features_group)
         
         # 刷新成绩按钮
-        refresh_grades_btn = QPushButton("刷新成绩")
-        refresh_grades_btn.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold; padding: 10px;")
-        refresh_grades_btn.clicked.connect(self.refresh_grades_data)
-        features_layout.addWidget(refresh_grades_btn)
+        self.refresh_grades_btn = QPushButton("刷新成绩")
+        self.refresh_grades_btn.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold; padding: 10px;")
+        self.refresh_grades_btn.clicked.connect(self.refresh_grades_wrapper)
+        features_layout.addWidget(self.refresh_grades_btn)
         
         # 刷新课表按钮
-        refresh_schedule_btn = QPushButton("刷新课表")
-        refresh_schedule_btn.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold; padding: 10px;")
-        refresh_schedule_btn.clicked.connect(self.refresh_schedule_data)
-        features_layout.addWidget(refresh_schedule_btn)
+        self.refresh_schedule_btn = QPushButton("刷新课表")
+        self.refresh_schedule_btn.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold; padding: 10px;")
+        self.refresh_schedule_btn.clicked.connect(self.refresh_schedule_wrapper)
+        features_layout.addWidget(self.refresh_schedule_btn)
         
         # 查看成绩按钮
-        view_grades_btn = QPushButton("查看成绩")
-        view_grades_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
-        view_grades_btn.clicked.connect(self.show_grades_viewer)
-        features_layout.addWidget(view_grades_btn)
+        self.view_grades_btn = QPushButton("查看成绩")
+        self.view_grades_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
+        self.view_grades_btn.clicked.connect(self.show_grades_viewer_wrapper)
+        features_layout.addWidget(self.view_grades_btn)
         
         # 查看课表按钮
-        view_schedule_btn = QPushButton("查看课表")
-        view_schedule_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
-        view_schedule_btn.clicked.connect(self.show_schedule_viewer)
-        features_layout.addWidget(view_schedule_btn)
+        self.view_schedule_btn = QPushButton("查看课表")
+        self.view_schedule_btn.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
+        self.view_schedule_btn.clicked.connect(self.show_schedule_viewer_wrapper)
+        features_layout.addWidget(self.view_schedule_btn)
         
         # 导入明文配置按钮
-        import_config_btn = QPushButton("导入明文配置")
-        import_config_btn.setStyleSheet("background-color: #ffc107; color: #212529; font-weight: bold; padding: 10px;")
-        import_config_btn.clicked.connect(self.import_plaintext_config)
-        features_layout.addWidget(import_config_btn)
+        self.import_config_btn = QPushButton("导入明文配置")
+        self.import_config_btn.setStyleSheet("background-color: #ffc107; color: #212529; font-weight: bold; padding: 10px;")
+        self.import_config_btn.clicked.connect(self.import_plaintext_config_wrapper)
+        features_layout.addWidget(self.import_config_btn)
         
         layout.addWidget(features_group)
         
@@ -1308,39 +1399,35 @@ class ConfigWindow(QWidget):
         """刷新成绩数据"""
         try:
             # 导入需要的模块
-            from core.go import getCourseGrades
-            
-            # 获取当前配置
-            username = self.cfg.get("account", "username", fallback="")
-            password = self.cfg.get("account", "password", fallback="")
-            school_code = self.cfg.get("account", "school_code", fallback="12345")
-            
-            if not username or not password:
-                QMessageBox.warning(self, "警告", "请先在配置中填写账号密码")
-                return
+            from core.go import fetch_and_push_grades
             
             # 调用获取成绩的函数
-            result = getCourseGrades(school_code, username, password)
+            fetch_and_push_grades(push=False, force_update=True)
             
-            if result:
-                QMessageBox.information(self, "成功", "成绩数据刷新完成")
-            else:
-                QMessageBox.warning(self, "警告", "成绩数据刷新失败")
+            QMessageBox.information(self, "成功", "成绩数据刷新完成")
                 
         except ImportError:
-            from core.school import getCourseGrades
+            # 如果从 core.go 导入失败，尝试直接从学校模块获取
+            from core.config_manager import load_config
+            cfg = load_config()
+            school_code = cfg.get("account", "school_code", fallback="12345")
             
-            # 获取当前配置
-            username = self.cfg.get("account", "username", fallback="")
-            password = self.cfg.get("account", "password", fallback="")
-            school_code = self.cfg.get("account", "school_code", fallback="12345")
+            from core.school import get_school_module
+            school_mod = get_school_module(school_code)
+            
+            if not school_mod:
+                QMessageBox.critical(self, "错误", f"无法获取学校模块：{school_code}")
+                return
+            
+            username = cfg.get("account", "username", fallback="")
+            password = cfg.get("account", "password", fallback="")
             
             if not username or not password:
                 QMessageBox.warning(self, "警告", "请先在配置中填写账号密码")
                 return
             
             # 调用获取成绩的函数
-            result = getCourseGrades(school_code, username, password)
+            result = school_mod.fetch_grades(username, password, force_update=True)
             
             if result:
                 QMessageBox.information(self, "成功", "成绩数据刷新完成")
@@ -1354,39 +1441,35 @@ class ConfigWindow(QWidget):
         """刷新课表数据"""
         try:
             # 导入需要的模块
-            from core.go import getCourseSchedule
-            
-            # 获取当前配置
-            username = self.cfg.get("account", "username", fallback="")
-            password = self.cfg.get("account", "password", fallback="")
-            school_code = self.cfg.get("account", "school_code", fallback="12345")
-            
-            if not username or not password:
-                QMessageBox.warning(self, "警告", "请先在配置中填写账号密码")
-                return
+            from core.go import fetch_and_push_today_schedule
             
             # 调用获取课表的函数
-            result = getCourseSchedule(school_code, username, password)
+            fetch_and_push_today_schedule(force_update=True)
             
-            if result:
-                QMessageBox.information(self, "成功", "课表数据刷新完成")
-            else:
-                QMessageBox.warning(self, "警告", "课表数据刷新失败")
+            QMessageBox.information(self, "成功", "课表数据刷新完成")
                 
         except ImportError:
-            from core.school import getCourseSchedule
+            # 如果从 core.go 导入失败，尝试直接从学校模块获取
+            from core.config_manager import load_config
+            cfg = load_config()
+            school_code = cfg.get("account", "school_code", fallback="12345")
             
-            # 获取当前配置
-            username = self.cfg.get("account", "username", fallback="")
-            password = self.cfg.get("account", "password", fallback="")
-            school_code = self.cfg.get("account", "school_code", fallback="12345")
+            from core.school import get_school_module
+            school_mod = get_school_module(school_code)
+            
+            if not school_mod:
+                QMessageBox.critical(self, "错误", f"无法获取学校模块：{school_code}")
+                return
+            
+            username = cfg.get("account", "username", fallback="")
+            password = cfg.get("account", "password", fallback="")
             
             if not username or not password:
                 QMessageBox.warning(self, "警告", "请先在配置中填写账号密码")
                 return
             
             # 调用获取课表的函数
-            result = getCourseSchedule(school_code, username, password)
+            result = school_mod.fetch_course_schedule(username, password, force_update=True)
             
             if result:
                 QMessageBox.information(self, "成功", "课表数据刷新完成")
@@ -1395,6 +1478,94 @@ class ConfigWindow(QWidget):
         
         except Exception as e:
             QMessageBox.critical(self, "错误", f"刷新课表数据时发生错误：\n{str(e)}")
+
+    def _set_button_pressed_style(self, button, pressed=True):
+        """设置按钮按下样式"""
+        if pressed:
+            # 按下时的样式 - 添加边框和阴影效果
+            button.setStyleSheet(
+                "QPushButton { "
+                "background-color: #005a9e; "  # 稍深的颜色表示按下状态
+                "color: white; "
+                "font-weight: bold; "
+                "padding: 10px; "
+                "border: 2px solid #004a87; "  # 添加边框
+                "border-radius: 4px; "
+                "box-shadow: inset 0 2px 4px rgba(0,0,0,0.3); "  # 内阴影效果
+                "}"
+            )
+        else:
+            # 恢复正常样式
+            if button == self.refresh_grades_btn:
+                button.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold; padding: 10px;")
+            elif button == self.refresh_schedule_btn:
+                button.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold; padding: 10px;")
+            elif button == self.view_grades_btn:
+                button.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
+            elif button == self.view_schedule_btn:
+                button.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;")
+            elif button == self.import_config_btn:
+                button.setStyleSheet("background-color: #ffc107; color: #212529; font-weight: bold; padding: 10px;")
+
+    def refresh_grades_wrapper(self):
+        """刷新成绩数据的包装方法，带有按钮按下效果"""
+        # 设置按钮为按下状态
+        self._set_button_pressed_style(self.refresh_grades_btn, pressed=True)
+        QApplication.processEvents()  # 立即更新UI
+        
+        try:
+            self.refresh_grades_data()
+        finally:
+            # 恢复按钮正常状态
+            self._set_button_pressed_style(self.refresh_grades_btn, pressed=False)
+
+    def refresh_schedule_wrapper(self):
+        """刷新课表数据的包装方法，带有按钮按下效果"""
+        # 设置按钮为按下状态
+        self._set_button_pressed_style(self.refresh_schedule_btn, pressed=True)
+        QApplication.processEvents()  # 立即更新UI
+        
+        try:
+            self.refresh_schedule_data()
+        finally:
+            # 恢复按钮正常状态
+            self._set_button_pressed_style(self.refresh_schedule_btn, pressed=False)
+
+    def show_grades_viewer_wrapper(self):
+        """显示成绩查看器的包装方法，带有按钮按下效果"""
+        # 设置按钮为按下状态
+        self._set_button_pressed_style(self.view_grades_btn, pressed=True)
+        QApplication.processEvents()  # 立即更新UI
+        
+        try:
+            self.show_grades_viewer()
+        finally:
+            # 恢复按钮正常状态
+            self._set_button_pressed_style(self.view_grades_btn, pressed=False)
+
+    def show_schedule_viewer_wrapper(self):
+        """显示课表查看器的包装方法，带有按钮按下效果"""
+        # 设置按钮为按下状态
+        self._set_button_pressed_style(self.view_schedule_btn, pressed=True)
+        QApplication.processEvents()  # 立即更新UI
+        
+        try:
+            self.show_schedule_viewer()
+        finally:
+            # 恢复按钮正常状态
+            self._set_button_pressed_style(self.view_schedule_btn, pressed=False)
+
+    def import_plaintext_config_wrapper(self):
+        """导入明文配置的包装方法，带有按钮按下效果"""
+        # 设置按钮为按下状态
+        self._set_button_pressed_style(self.import_config_btn, pressed=True)
+        QApplication.processEvents()  # 立即更新UI
+        
+        try:
+            self.import_plaintext_config()
+        finally:
+            # 恢复按钮正常状态
+            self._set_button_pressed_style(self.import_config_btn, pressed=False)
 
     def import_plaintext_config(self):
         """导入明文配置"""
