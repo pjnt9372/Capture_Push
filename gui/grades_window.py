@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QHBoxLayout, QPushButton, QMessageBox, QApplication
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 
 # 动态获取基础目录和配置路径
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,6 +37,15 @@ class GradesViewerWindow(QWidget):
         super().__init__()
         self.setWindowTitle("Capture_Push · 成绩查看")
         self.resize(900, 600)
+        
+        # 设置窗口图标
+        try:
+            icon_path = BASE_DIR / "resources" / "app_icon.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception as e:
+            print(f"无法设置成绩窗口图标: {e}")
+        
         self.init_ui()
 
     def init_ui(self):

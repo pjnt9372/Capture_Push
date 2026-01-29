@@ -104,6 +104,16 @@ class ConfigWindow(QWidget):
         self.setWindowTitle("Capture_Push · 设置")
         self.resize(500, 650)
         
+        # 设置窗口图标
+        try:
+            from pathlib import Path
+            BASE_DIR = Path(__file__).resolve().parent.parent
+            icon_path = BASE_DIR / "resources" / "app_icon.ico"
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception as e:
+            print(f"无法设置窗口图标: {e}")
+        
         # 放大全局字体以确保看清
         font = self.font()
         font.setPointSize(10)
@@ -146,6 +156,7 @@ class ConfigWindow(QWidget):
         # 标签页
         self.tabs = QTabWidget()
         self.tabs.addTab(self.create_basic_tab(), "基本配置")
+        self.tabs.addTab(self.create_software_settings_tab(), "软件设置")
         self.tabs.addTab(self.create_school_time_tab(), "学校时间设置")
         self.tabs.addTab(self.create_push_tab(), "推送设置")
         self.tabs.addTab(self.create_about_tab(), "关于")
@@ -189,44 +200,7 @@ class ConfigWindow(QWidget):
         form.addRow("密码", self.password)
         layout.addLayout(form)
 
-        loop_group = QGroupBox("循环检测配置")
-        loop_layout = QVBoxLayout(loop_group)
-
-        # 成绩循环
-        grade_lay = QHBoxLayout()
-        self.loop_grade_enabled = QCheckBox("启用成绩循环检测")
-        self.loop_grade_interval = QSpinBox()
-        self.loop_grade_interval.setRange(60, 604800)
-        self.loop_grade_interval.setSuffix(" 秒")
-        grade_lay.addWidget(self.loop_grade_enabled)
-        grade_lay.addWidget(QLabel("间隔:"))
-        grade_lay.addWidget(self.loop_grade_interval)
-        loop_layout.addLayout(grade_lay)
-
-        # 课表循环
-        sched_lay = QHBoxLayout()
-        self.loop_schedule_enabled = QCheckBox("启用课表循环检测")
-        self.loop_schedule_interval = QSpinBox()
-        self.loop_schedule_interval.setRange(60, 604800)
-        self.loop_schedule_interval.setSuffix(" 秒")
-        sched_lay.addWidget(self.loop_schedule_enabled)
-        sched_lay.addWidget(QLabel("间隔:"))
-        sched_lay.addWidget(self.loop_schedule_interval)
-        loop_layout.addLayout(sched_lay)
-
-        loop_layout.addWidget(QLabel("提示: 1小时=3600秒, 1天=86400秒"))
-        layout.addWidget(loop_group)
-
-        # 课表定时推送设置
-        push_group = QGroupBox("课表定时推送设置")
-        push_layout = QVBoxLayout(push_group)
-        self.push_today_enabled = QCheckBox("当天 08:00 推送今日课表")
-        self.push_tomorrow_enabled = QCheckBox("前一天 21:00 推送次日课表")
-        self.push_next_week_enabled = QCheckBox("周日 20:00 推送下周全部课表")
-        push_layout.addWidget(self.push_today_enabled)
-        push_layout.addWidget(self.push_tomorrow_enabled)
-        push_layout.addWidget(self.push_next_week_enabled)
-        layout.addWidget(push_group)
+        layout.addStretch()
 
         layout.addStretch()
         return tab
@@ -566,7 +540,7 @@ class ConfigWindow(QWidget):
 
     def load_config(self):
         # 院校
-        school_code = self.cfg.get("account", "school_code", fallback="10546")
+        school_code = self.cfg.get("account", "school_code", fallback="12345")
         index = self.school_combo.findData(school_code)
         if index >= 0:
             self.school_combo.setCurrentIndex(index)
@@ -611,6 +585,11 @@ class ConfigWindow(QWidget):
         self.push_today_enabled.setChecked(self.cfg.getboolean("schedule_push", "today_8am", fallback=False))
         self.push_tomorrow_enabled.setChecked(self.cfg.getboolean("schedule_push", "tomorrow_9pm", fallback=False))
         self.push_next_week_enabled.setChecked(self.cfg.getboolean("schedule_push", "next_week_sunday", fallback=False))
+        
+        # 自启动设置
+        if "software_settings" not in self.cfg:
+            self.cfg["software_settings"] = {}
+        self.autostart_enabled.setChecked(self.cfg.getboolean("software_settings", "autostart_tray", fallback=False))
 
         # 推送方式
         method = self.cfg.get("push", "method", fallback="none").lower()
@@ -691,7 +670,12 @@ class ConfigWindow(QWidget):
 
         if "serverchan" not in self.cfg: self.cfg["serverchan"] = {}
         self.cfg["serverchan"]["sendkey"] = self.serverchan_sendkey.text()
-
+        
+        # 自启动设置
+        if "software_settings" not in self.cfg:
+            self.cfg["software_settings"] = {}
+        self.cfg["software_settings"]["autostart_tray"] = str(self.autostart_enabled.isChecked())
+        
         # 物理保存
         self._save_config_to_file()
 
@@ -767,7 +751,7 @@ class ConfigWindow(QWidget):
                 # 添加基本配置节
                 empty_cfg["logging"] = {"level": "INFO"}
                 empty_cfg["run_model"] = {"model": "BUILD"}
-                empty_cfg["account"] = {"school_code": "10546", "username": "", "password": ""}
+                empty_cfg["account"] = {"school_code": "12345", "username": "", "password": ""}
                 empty_cfg["push"] = {"method": "none"}
                 
                 # 保存空配置
@@ -1032,6 +1016,66 @@ class ConfigWindow(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"生成报告时发生异常：\n{str(e)}")
 
+    def create_software_settings_tab(self):
+        """创建软件设置选项卡"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # 循环检测配置组
+        loop_group = QGroupBox("循环检测配置")
+        loop_layout = QVBoxLayout(loop_group)
+        
+        # 成绩循环
+        grade_lay = QHBoxLayout()
+        self.loop_grade_enabled = QCheckBox("启用成绩循环检测")
+        self.loop_grade_interval = QSpinBox()
+        self.loop_grade_interval.setRange(60, 604800)
+        self.loop_grade_interval.setSuffix(" 秒")
+        grade_lay.addWidget(self.loop_grade_enabled)
+        grade_lay.addWidget(QLabel("间隔:"))
+        grade_lay.addWidget(self.loop_grade_interval)
+        loop_layout.addLayout(grade_lay)
+        
+        # 课表循环
+        sched_lay = QHBoxLayout()
+        self.loop_schedule_enabled = QCheckBox("启用课表循环检测")
+        self.loop_schedule_interval = QSpinBox()
+        self.loop_schedule_interval.setRange(60, 604800)
+        self.loop_schedule_interval.setSuffix(" 秒")
+        sched_lay.addWidget(self.loop_schedule_enabled)
+        sched_lay.addWidget(QLabel("间隔:"))
+        sched_lay.addWidget(self.loop_schedule_interval)
+        loop_layout.addLayout(sched_lay)
+        
+        loop_layout.addWidget(QLabel("提示: 1小时=3600秒, 1天=86400秒"))
+        layout.addWidget(loop_group)
+        
+        # 课表定时推送设置
+        push_group = QGroupBox("课表定时推送设置")
+        push_layout = QVBoxLayout(push_group)
+        self.push_today_enabled = QCheckBox("当天 08:00 推送今日课表")
+        self.push_tomorrow_enabled = QCheckBox("前一天 21:00 推送次日课表")
+        self.push_next_week_enabled = QCheckBox("周日 20:00 推送下周全部课表")
+        push_layout.addWidget(self.push_today_enabled)
+        push_layout.addWidget(self.push_tomorrow_enabled)
+        push_layout.addWidget(self.push_next_week_enabled)
+        layout.addWidget(push_group)
+        
+        # 托盘程序自启动设置
+        autostart_group = QGroupBox("托盘程序自启动")
+        autostart_layout = QVBoxLayout(autostart_group)
+        
+        self.autostart_enabled = QCheckBox("开机自启动托盘程序")
+        autostart_desc = QLabel("勾选此项将使托盘程序在系统启动时自动运行")
+        autostart_desc.setWordWrap(True)
+        autostart_layout.addWidget(self.autostart_enabled)
+        autostart_layout.addWidget(autostart_desc)
+        
+        layout.addWidget(autostart_group)
+        
+        layout.addStretch()
+        return tab
+    
     def closeEvent(self, event):
         """主窗口关闭事件：检查是否有子窗口未关闭"""
         active_sub_windows = []

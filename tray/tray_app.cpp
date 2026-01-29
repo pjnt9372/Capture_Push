@@ -730,7 +730,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             
             wcscpy_s(nid.szTip, L"Capture_Push Tray");
             
-            nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+            // 尝试加载自定义图标，如果失败则使用默认图标
+            std::string exe_dir = GetExecutableDirectory();
+            std::string icon_path = exe_dir + "\\resources\\app_icon.ico";
+            
+            HICON hCustomIcon = (HICON)LoadImageW(NULL, 
+                std::wstring(icon_path.begin(), icon_path.end()).c_str(), 
+                IMAGE_ICON, 
+                0, 
+                0, 
+                LR_LOADFROMFILE | LR_DEFAULTSIZE);
+            
+            if (hCustomIcon) {
+                nid.hIcon = hCustomIcon;
+                LogMessage("Successfully loaded custom tray icon: " + icon_path, LOG_INFO);
+            } else {
+                // 如果自定义图标加载失败，使用默认图标
+                nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+                LogMessage("Using default icon, failed to load: " + icon_path, LOG_INFO);
+            }
+            
             Shell_NotifyIconW(NIM_ADD, &nid);
             
             ReadLoopConfig();
