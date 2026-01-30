@@ -22,16 +22,14 @@ jobs:
       with:
         python-version: '3.9'
         
-    - name: Get branch and school code
+    - name: Get school code
       id: vars
       run: |
-        BRANCH=${{ github.event.inputs.branch || 'main' }}
         SCHOOL_CODE=${{ github.event.inputs.school_code || '10546' }}
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        echo "BRANCH=$BRANCH" >> $GITHUB_ENV
         echo "SCHOOL_CODE=$SCHOOL_CODE" >> $GITHUB_ENV
         echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
-        echo "Using branch: $BRANCH, school code: $SCHOOL_CODE, timestamp: $TIMESTAMP"
+        echo "Using school code: $SCHOOL_CODE, timestamp: $TIMESTAMP"
         
     - name: Prepare plugin directory
       run: |
