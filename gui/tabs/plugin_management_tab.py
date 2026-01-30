@@ -108,7 +108,7 @@ class PluginManagementTab(QWidget):
                     # 更新最新版本列
                     latest_ver_item = QTableWidgetItem(latest_version)
                     latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    self.plugin_table.setItem(row, 3, latest_version)
+                    self.plugin_table.setItem(row, 3, latest_ver_item)
                     
                     # 更新贡献者列
                     contributor_item = QTableWidgetItem(contributor)

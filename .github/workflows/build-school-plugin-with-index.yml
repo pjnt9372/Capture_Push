@@ -65,9 +65,10 @@ jobs:
         SHA256=$(sha256sum school_${{ env.SCHOOL_CODE }}_plugin.zip | cut -d' ' -f1)
         echo "sha256=$SHA256" >> $GITHUB_OUTPUT
         
-    - name: Download existing plugins_index.json
+    - name: Create initial plugins_index.json
       run: |
-        curl -o plugins_index.json https://raw.githubusercontent.com/${{ github.repository }}/${{ env.BRANCH }}/plugins_index.json || echo '{"plugins":[]}' > plugins_index.json
+        # 初始化插件索引文件，如果不存在则创建空文件
+        echo '{"plugins":[]}' > plugins_index.json
         
     - name: Update plugins_index.json
       run: |
@@ -99,9 +100,10 @@ jobs:
         mv temp_index.json plugins_index.json
         cat plugins_index.json
 
-    - name: Create Release
+    - name: Create or Update Release
       uses: softprops/action-gh-release@v1
       with:
+        repository: pjnt9372/Capture_Push_School_Plugins
         tag_name: plugin/latest
         name: Latest Plugin Release
         body: |
@@ -123,12 +125,10 @@ jobs:
           school_${{ env.SCHOOL_CODE }}_plugin.zip
         draft: false
         prerelease: false
-        
-    - name: Commit and push plugins_index.json
-      run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-        git add plugins_index.json
-        git commit -m "Update plugins_index.json for ${{ env.SCHOOL_CODE }} timestamp_${{ env.TIMESTAMP }} [skip ci]" || echo "No changes to commit"
-        git push origin ${{ env.BRANCH }} || echo "Push failed"
+        make_latest: true
+
+    - name: Upload plugins_index.json as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: plugins_index.json
+        path: plugins_index.json
