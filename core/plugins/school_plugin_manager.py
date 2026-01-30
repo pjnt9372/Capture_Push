@@ -26,7 +26,7 @@ class SchoolPluginManager:
     
     GITHUB_REPO_DEFAULT = "pjnt9372/Capture_Push_School_Plugins"  # 默认院校插件仓库
     API_URL_DEFAULT = f"https://api.github.com/repos/{GITHUB_REPO_DEFAULT}/releases/tags/plugin%2Flatest"  # 固定标签的插件API URL
-    PLUGINS_INDEX_URL_DEFAULT = f"https://raw.githubusercontent.com/{GITHUB_REPO_DEFAULT}/main/plugins_index.json"  # 插件索引文件URL (备用)
+    PLUGINS_INDEX_URL_DEFAULT = f"https://github.com/{GITHUB_REPO_DEFAULT}/releases/latest/download/plugins_index.json"  # 插件索引文件URL (从Release获取)
     
     def __init__(self):
         self.plugins_dir = Path(__file__).parent.parent / "plugins" / "school"
@@ -48,6 +48,13 @@ class SchoolPluginManager:
                 'https://api.github.com/repos/pjnt9372/Capture_Push_School_Plugins/releases/tags/plugin%2Flatest')
         else:
             self.repository_url = 'https://api.github.com/repos/pjnt9372/Capture_Push_School_Plugins/releases/tags/plugin%2Flatest'
+        
+        # 获取插件索引文件URL，如果没有配置则使用默认值
+        if config.has_section('plugins'):
+            self.plugins_index_url = config.get('plugins', {}).get('plugins_index_url',
+                'https://github.com/pjnt9372/Capture_Push_School_Plugins/releases/latest/download/plugins_index.json')
+        else:
+            self.plugins_index_url = 'https://github.com/pjnt9372/Capture_Push_School_Plugins/releases/latest/download/plugins_index.json'
         
     def _get_local_plugin_version(self, school_code: str) -> str:
         """
@@ -416,7 +423,7 @@ class SchoolPluginManager:
                 return self.plugins_index_cache
             
             req = urllib.request.Request(
-                f"https://raw.githubusercontent.com/{self.GITHUB_REPO_DEFAULT}/main/plugins_index.json",
+                self.plugins_index_url,
                 headers={'User-Agent': 'Capture_Push-SchoolPluginManager'}
             )
             
@@ -432,7 +439,7 @@ class SchoolPluginManager:
             
             # 尝试使用代理访问
             try:
-                proxy_url = PROXY_URL_PREFIX + f"https://raw.githubusercontent.com/{self.GITHUB_REPO_DEFAULT}/main/plugins_index.json"
+                proxy_url = PROXY_URL_PREFIX + self.plugins_index_url
                 logger.info(f"尝试使用代理访问插件索引: {proxy_url}")
                 req_proxy = urllib.request.Request(
                     proxy_url,

@@ -41,3 +41,8 @@ tray/build/
 /build/Capture_Push_Installer/warn-Capture_Push_Installer.txt
 /build/Capture_Push_Installer/xref-Capture_Push_Installer.html
 /PYTHON_SETUP_README.txt
+/example_plugin/10546/__init__.py
+/example_plugin/10546/getCourseGrades.py
+/example_plugin/10546/getCourseSchedule.py
+/PLUGIN_MANUAL.md
+/school_10546_plugin.zip
