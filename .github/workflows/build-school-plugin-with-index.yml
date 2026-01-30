@@ -126,7 +126,7 @@ jobs:
         prerelease: false
         
     - name: Upload plugins_index.json as artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: plugins_index.json
         path: plugins_index.json
