@@ -145,64 +145,77 @@ def main():
         build_dir.mkdir(parents=True)
     
     # 2. 准备便携式 Python 环境 (在 build 目录下)
-    # 如果 .venv 已存在且满足要求，尝试增量更新而不是全部删除
-    # 但为了确保 100% 隔离，这里依然保留逻辑，主要通过 pip 缓存加速
+    # 如果 .venv 已存在则不再重复创建，避免重复下载
     if venv_dir.exists():
-        log(f"发现已有 .venv，将进行清理以确保隔离环境纯净...")
-        shutil.rmtree(venv_dir)
-    venv_dir.mkdir(parents=True, exist_ok=True)
+        log(f"发现已有 .venv，跳过创建以避免重复下载...")
+    else:
+        venv_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 使用改进的缓存机制下载 Python
+        download_with_cache(py_url, zip_path)
 
-    # 使用改进的缓存机制下载 Python
-    download_with_cache(py_url, zip_path)
+        log("正在解压 Python 核心...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(venv_dir)
 
-    log("正在解压 Python 核心...")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(venv_dir)
+        log("配置 ._pth 文件以支持 site-packages...")
+        pth_files = list(venv_dir.glob("python*._pth"))
+        if pth_files:
+            pth_file = pth_files[0]
+            with open(pth_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            with open(pth_file, 'w', encoding='utf-8') as f:
+                for line in lines:
+                    f.write(line.replace("#import site", "import site"))
 
-    log("配置 ._pth 文件以支持 site-packages...")
-    pth_files = list(venv_dir.glob("python*._pth"))
-    if pth_files:
-        pth_file = pth_files[0]
-        with open(pth_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        with open(pth_file, 'w', encoding='utf-8') as f:
-            for line in lines:
-                f.write(line.replace("#import site", "import site"))
+        log("准备 pip...")
+        # 使用改进的缓存机制下载 get-pip.py
+        download_with_cache(get_pip_url, cached_get_pip)
+        shutil.copy2(cached_get_pip, get_pip_path)
+        
+        subprocess.run([str(venv_dir / "python.exe"), str(get_pip_path), "--no-warn-script-location"], cwd=venv_dir, check=True)
+        os.remove(get_pip_path)
 
-    log("准备 pip...")
-    # 使用改进的缓存机制下载 get-pip.py
-    download_with_cache(get_pip_url, cached_get_pip)
-    shutil.copy2(cached_get_pip, get_pip_path)
-    
-    subprocess.run([str(venv_dir / "python.exe"), str(get_pip_path), "--no-warn-script-location"], cwd=venv_dir, check=True)
-    os.remove(get_pip_path)
+        # 安装项目依赖（使用改进的缓存机制）
+        install_dependencies_with_cache(venv_dir, requirements_file, pip_cache_dir)
 
-    # 安装项目依赖（使用改进的缓存机制）
-    install_dependencies_with_cache(venv_dir, requirements_file, pip_cache_dir)
+
     
     # 3. 同步源码到构建空间 (保持与仓库相同的相对结构，以便 .iss 无需修改即可运行)
     log("正在同步组件到构建空间...")
     
-    # 复制 core 目录，但只保留 school/12345 子目录
-    if (project_root / "core").exists():
-        core_dst = build_dir / "core"
-        copy_tree(project_root / "core", core_dst)
+    # 创建 core 目录结构
+    core_dst = build_dir / "core"
+    core_dst.mkdir(parents=True, exist_ok=True)
+    
+    # 复制 core 目录下的基础文件
+    core_src = project_root / "core"
+    for item in core_src.iterdir():
+        if item.is_file():  # 只复制基础文件，不包括 school 和 plugins 目录
+            if item.name not in ["school", "plugins"]:
+                shutil.copy2(item, core_dst / item.name)
+    
+    # 只复制 school/12345 目录（示例学校）
+    school_12345_src = core_src / "school" / "12345"
+    if school_12345_src.exists():
+        school_dst = core_dst / "school"
+        school_dst.mkdir(exist_ok=True)
+        school_12345_dst = school_dst / "12345"
+        copy_tree(school_12345_src, school_12345_dst)
+        log(f"已复制示例学校目录: 12345")
+    
+
+    
+    # 只复制 plugins/school/12345 目录（示例学校插件）
+    plugins_school_12345_src = core_src / "plugins" / "school" / "12345"
+    if plugins_school_12345_src.exists():
+        plugins_dst = core_dst / "plugins" / "school"
+        plugins_dst.mkdir(parents=True, exist_ok=True)
+        plugins_12345_dst = plugins_dst / "12345"
+        copy_tree(plugins_school_12345_src, plugins_12345_dst)
+        log(f"已复制示例学校插件目录: 12345")
         
-        # 清理 school 目录，只保留 12345 目录
-        school_dir = core_dst / "school"
-        if school_dir.exists():
-            for school_subdir in school_dir.iterdir():
-                if school_subdir.is_dir() and school_subdir.name != "12345":
-                    shutil.rmtree(school_subdir)
-                    log(f"已移除非12345的学校目录: {school_subdir.name}")
-        
-        # 清理 plugins/school 目录，只保留 12345 目录（如果存在）
-        plugins_school_dir = core_dst / "plugins" / "school"
-        if plugins_school_dir.exists():
-            for school_subdir in plugins_school_dir.iterdir():
-                if school_subdir.is_dir() and school_subdir.name != "12345":
-                    shutil.rmtree(school_subdir)
-                    log(f"已移除非12345的学校插件目录: {school_subdir.name}")
+
     
     copy_tree(project_root / "gui", build_dir / "gui")
     copy_tree(project_root / "resources", build_dir / "resources")

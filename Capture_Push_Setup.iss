@@ -44,9 +44,15 @@ Name: autostart; Description: "开机自动启动托盘程序"; GroupDescription
 
 [Files]
 Source: ".venv\*"; DestDir: "{app}\.venv"; Flags: ignoreversion recursesubdirs
-Source: "core\*"; DestDir: "{app}\core"; Flags: ignoreversion recursesubdirs excludeitchildless
 Source: "core\school\12345\*"; DestDir: "{app}\core\school\12345"; Flags: ignoreversion recursesubdirs
 Source: "core\plugins\school\12345\*"; DestDir: "{app}\core\plugins\school\12345"; Flags: ignoreversion recursesubdirs
+Source: "core\config_manager.py"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "core\go.py"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "core\log.py"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "core\push.py"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "core\updater.py"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "core\utils\*"; DestDir: "{app}\core\utils"; Flags: ignoreversion recursesubdirs
+Source: "core\plugins\school_plugin_manager.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "gui\*"; DestDir: "{app}\gui"; Flags: ignoreversion recursesubdirs
 Source: "resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs
 Source: "VERSION"; DestDir: "{app}"; Flags: ignoreversion

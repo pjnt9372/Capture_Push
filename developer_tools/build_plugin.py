@@ -55,6 +55,9 @@ def build_plugin(school_code, output_dir=".", plugin_dir=None):
     zip_filename = f"school_{school_code}_plugin.zip"
     zip_path = Path(output_dir) / zip_filename
     
+    # 生成时间戳版本号
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     # 创建ZIP文件
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(plugin_dir):
@@ -63,12 +66,17 @@ def build_plugin(school_code, output_dir=".", plugin_dir=None):
                 # 将文件添加到ZIP中，不包含目录结构
                 arcname = file_path.relative_to(plugin_dir)
                 zipf.write(file_path, arcname)
+        
+        # 添加版本文件到ZIP中
+        version_content = timestamp
+        zipf.writestr("version.txt", version_content)
     
     # 计算SHA256
     sha256 = calculate_sha256(zip_path)
     
     print(f"插件构建成功: {zip_path}")
     print(f"SHA256: {sha256}")
+    print(f"版本号: {timestamp}")
     
     return str(zip_path), sha256
 

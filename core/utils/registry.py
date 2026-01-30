@@ -13,8 +13,39 @@ from pathlib import Path
 def get_tray_exe_path():
     """
     获取托盘程序的完整路径
-    根据开发环境（父目录查找）和打包环境（同级目录）双重路径策略探测
+    优先从注册表中读取（安装脚本中定义），没有才视为本地
     """
+    # 首先尝试从注册表中读取安装路径
+    try:
+        key_path = r"SOFTWARE\Capture_Push"
+        # 尝试使用不同的访问标志组合
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+                install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
+        except OSError:
+            # 如果64位访问失败，尝试标准访问
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ) as key:
+                install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
+        
+        # 检查注册表中存储的安装路径是否存在
+        if os.path.exists(install_path):
+            tray_exe_path = os.path.join(install_path, "Capture_Push_tray.exe")
+            if os.path.exists(tray_exe_path):
+                return tray_exe_path
+            else:
+                # 如果安装路径存在但托盘程序不存在，则继续查找本地路径
+                print(f"注册表中的安装路径存在，但托盘程序不存在: {tray_exe_path}，尝试查找本地路径...")
+        else:
+            # 如果注册表中的安装路径不存在，则继续查找本地路径
+            print(f"注册表中的安装路径不存在: {install_path}，尝试查找本地路径...")
+    except FileNotFoundError:
+        # 键值不存在，继续查找本地路径
+        print("注册表中未找到安装路径，尝试查找本地路径...")
+        pass
+    except Exception as e:
+        # 注册表读取失败，继续查找本地路径
+        print(f"从注册表读取安装路径失败: {e}，尝试查找本地路径...")
+    
     # 获取当前工作目录下的托盘程序路径
     current_dir = Path.cwd()
     tray_exe = current_dir / "Capture_Push_tray.exe"
@@ -44,17 +75,23 @@ def is_autostart_enabled():
         bool: 如果已启用自启动则返回True，否则返回False
     """
     try:
-        # 从HKCU（当前用户）的Run键检查，与安装包设置的位置一致
+        # 从HKCU（当前用户）的Run键检查自启动项
         key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
-            try:
+        # 尝试使用不同的访问标志组合
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
                 value, reg_type = winreg.QueryValueEx(key, "Capture_Push_Tray")
-                tray_exe_path = get_tray_exe_path()
-                # 检查注册表中的路径是否与实际路径匹配
-                return value.strip('"') == tray_exe_path
-            except FileNotFoundError:
-                # 键值不存在
-                return False
+                # 只要键值存在，就表示自启动已启用
+                return True
+        except OSError:
+            # 如果64位访问失败，尝试标准访问
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                value, reg_type = winreg.QueryValueEx(key, "Capture_Push_Tray")
+                # 只要键值存在，就表示自启动已启用
+                return True
+    except FileNotFoundError:
+        # 键值不存在
+        return False
     except Exception as e:
         print(f"检查自启动状态时发生错误: {e}")
         return False
@@ -75,21 +112,38 @@ def set_autostart(enabled: bool):
         if not tray_path.exists():
             raise FileNotFoundError(f"托盘程序路径不存在: {tray_exe_path}")
         
-        # 打开注册表项（当前用户的Run项），与安装包设置的位置一致
+        # 打开注册表项（当前用户的Run项）
         key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as key:
-            if enabled:
-                # 启用自启动：添加键值
-                winreg.SetValueEx(key, "Capture_Push_Tray", 0, winreg.REG_SZ, f'"{tray_exe_path}"')
-                print(f"已设置自启动，程序路径: {tray_exe_path}")
-            else:
-                # 禁用自启动：删除键值
-                try:
-                    winreg.DeleteValue(key, "Capture_Push_Tray")
-                    print("已禁用自启动")
-                except FileNotFoundError:
-                    # 键值不存在，无需删除
-                    print("自启动未启用，无需禁用")
+        # 尝试使用不同的访问标志组合
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as key:
+                if enabled:
+                    # 启用自启动：添加键值
+                    winreg.SetValueEx(key, "Capture_Push_Tray", 0, winreg.REG_SZ, f'"{tray_exe_path}"')
+                    print(f"已设置自启动，程序路径: {tray_exe_path}")
+                else:
+                    # 禁用自启动：删除键值
+                    try:
+                        winreg.DeleteValue(key, "Capture_Push_Tray")
+                        print("已禁用自启动")
+                    except FileNotFoundError:
+                        # 键值不存在，无需删除
+                        print("自启动未启用，无需禁用")
+        except OSError:
+            # 如果64位访问失败，尝试标准访问
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
+                if enabled:
+                    # 启用自启动：添加键值
+                    winreg.SetValueEx(key, "Capture_Push_Tray", 0, winreg.REG_SZ, f'"{tray_exe_path}"')
+                    print(f"已设置自启动，程序路径: {tray_exe_path}")
+                else:
+                    # 禁用自启动：删除键值
+                    try:
+                        winreg.DeleteValue(key, "Capture_Push_Tray")
+                        print("已禁用自启动")
+                    except FileNotFoundError:
+                        # 键值不存在，无需删除
+                        print("自启动未启用，无需禁用")
                     
     except PermissionError:
         raise PermissionError("没有权限修改注册表")
@@ -115,11 +169,21 @@ def set_autostart_system_wide(enabled: bool):
         
         # 打开注册表项（所有用户的Run项）
         key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-        # 使用适当的访问标志，包括64位视图访问
-        access_flags = winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY
-        # 如果是64位系统，可能需要同时设置32位和64位视图
+        # 尝试使用不同的访问标志组合
         try:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, access_flags) as key:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as key:
+                if enabled:
+                    winreg.SetValueEx(key, "Capture_Push_Tray", 0, winreg.REG_SZ, f'"{tray_exe_path}"')
+                    print(f"已设置系统级自启动，程序路径: {tray_exe_path}")
+                else:
+                    try:
+                        winreg.DeleteValue(key, "Capture_Push_Tray")
+                        print("已禁用系统级自启动")
+                    except FileNotFoundError:
+                        print("系统级自启动未启用，无需禁用")
+        except OSError:
+            # 如果64位访问失败，尝试标准访问
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE) as key:
                 if enabled:
                     winreg.SetValueEx(key, "Capture_Push_Tray", 0, winreg.REG_SZ, f'"{tray_exe_path}"')
                     print(f"已设置系统级自启动，程序路径: {tray_exe_path}")

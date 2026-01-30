@@ -66,11 +66,15 @@ class SchoolPluginManager:
         Returns:
             本地插件版本号，如果不存在则返回 '0.0.0'
         """
+        logger.debug(f"获取本地插件版本: {school_code}")
         try:
             version_file = self.plugins_dir / school_code / "version.txt"
             if version_file.exists():
-                return version_file.read_text(encoding='utf-8').strip()
+                version = version_file.read_text(encoding='utf-8').strip()
+                logger.debug(f"插件 {school_code} 的本地版本: {version}")
+                return version
             else:
+                logger.debug(f"插件 {school_code} 未找到version.txt文件")
                 # 尝试从插件模块中获取版本信息
                 plugin_dir = self.plugins_dir / school_code
                 init_file = plugin_dir / "__init__.py"
@@ -83,9 +87,11 @@ class SchoolPluginManager:
                                 parts = line.split('=')
                                 if len(parts) > 1:
                                     version = parts[1].strip().strip('"\'')
+                                    logger.debug(f"从__init__.py获取插件 {school_code} 版本: {version}")
                                     return version
         except Exception as e:
-            logger.error(f"读取本地插件版本失败: {e}")
+            logger.error(f"读取本地插件 {school_code} 版本失败: {e}")
+        logger.debug(f"插件 {school_code} 返回默认版本: 0.0.0")
         return "0.0.0"
     
     def check_plugin_update(self, school_code: str) -> Optional[Dict[str, Any]]:
@@ -105,7 +111,7 @@ class SchoolPluginManager:
             plugin_info = self.get_plugin_info_from_index(school_code)
                 
             if plugin_info:
-                logger.info(f"从插件索引获取到 {school_code} 的插件信息")
+                logger.info(f"从插件索引获取到 {school_code} 的插件信息: {plugin_info}")
                     
                 # 检查版本
                 remote_version = plugin_info.get('plugin_version', '0.0.0')
@@ -117,6 +123,7 @@ class SchoolPluginManager:
                     # 添加远程信息
                     plugin_info['remote_version'] = remote_version
                     plugin_info['local_version'] = local_version
+                    logger.info(f"插件 {school_code} 有更新: {local_version} -> {remote_version}")
                     return plugin_info
                 else:
                     logger.info(f"院校 {school_code} 插件已是最新版本")
@@ -168,6 +175,7 @@ class SchoolPluginManager:
                 plugin_info['download_url'] = self._get_download_url(data, school_code)
                 plugin_info['remote_version'] = remote_version
                 plugin_info['local_version'] = local_version
+                logger.info(f"插件 {school_code} 有更新: {local_version} -> {remote_version}")
                 return plugin_info
             else:
                 logger.info(f"院校 {school_code} 插件已是最新版本")
@@ -204,9 +212,10 @@ class SchoolPluginManager:
                         # 添加远程信息
                         plugin_info['remote_version'] = remote_version
                         plugin_info['local_version'] = local_version
+                        logger.info(f"插件 {school_code} 有更新 (通过代理): {local_version} -> {remote_version}")
                         return plugin_info
                     else:
-                        logger.info(f"院校 {school_code} 插件已是最新版本")
+                        logger.info(f"院校 {school_code} 插件已是最新版本 (通过代理检查)")
                         return None
                     
                 # 从固定的 plugin/latest 标签获取插件信息
@@ -245,16 +254,17 @@ class SchoolPluginManager:
                     plugin_info['download_url'] = self._get_download_url(data, school_code)
                     plugin_info['remote_version'] = remote_version
                     plugin_info['local_version'] = local_version
+                    logger.info(f"插件 {school_code} 有更新 (通过代理): {local_version} -> {remote_version}")
                     return plugin_info
                 else:
-                    logger.info(f"院校 {school_code} 插件已是最新版本")
+                    logger.info(f"院校 {school_code} 插件已是最新版本 (通过代理检查)")
                     return None
                         
             except Exception as proxy_error:
                 logger.error(f"通过代理检查插件更新失败: {proxy_error}")
                 return None
         except Exception as e:
-            logger.error(f"检查插件更新失败: {e}")
+            logger.error(f"检查插件 {school_code} 更新失败: {e}", exc_info=True)
             return None
     
     def _parse_plugin_info(self, body: str, school_code: str) -> Optional[Dict[str, Any]]:
@@ -459,7 +469,100 @@ class SchoolPluginManager:
         except Exception as e:
             logger.error(f"获取插件索引失败: {e}")
             return None
-    
+
+    def clear_plugins_index_cache(self):
+        """
+        清除插件索引缓存，强制下次获取时重新从网络加载
+        """
+        self.plugins_index_cache = None
+        logger.info("插件索引缓存已清除")
+
+    def get_available_plugins(self) -> Dict[str, str]:
+        """
+        获取所有可用的插件列表
+        
+        Returns:
+            院校代码到院校名称的映射
+        """
+        logger.debug("开始获取可用插件列表")
+        plugins = {}
+        
+        # 从插件目录获取
+        if self.plugins_dir.exists():
+            logger.debug(f"检查插件目录: {self.plugins_dir}")
+            for item in self.plugins_dir.iterdir():
+                if item.is_dir() and not item.name.startswith('backup_') and not item.name.startswith('v') and item.name != 'current':
+                    init_file = item / "__init__.py"
+                    if init_file.exists():
+                        try:
+                            # 为了支持相对导入，需要将插件目录添加到 sys.path
+                            import sys
+                            plugin_dir_str = str(item)
+                            if plugin_dir_str not in sys.path:
+                                sys.path.insert(0, plugin_dir_str)
+                            
+                            spec = importlib.util.spec_from_file_location(
+                                f"plugins_school_{item.name}", 
+                                str(init_file)
+                            )
+                            module = importlib.util.module_from_spec(spec)
+                            # 设置模块的 __package__ 属性以支持相对导入
+                            module.__package__ = f"plugins_school_{item.name}"
+                            spec.loader.exec_module(module)
+                            
+                            # 移除临时添加的路径
+                            if plugin_dir_str in sys.path:
+                                sys.path.remove(plugin_dir_str)
+                            
+                            school_name = getattr(module, "SCHOOL_NAME", item.name)
+                            plugins[item.name] = school_name
+                            logger.debug(f"找到可用插件: {item.name} - {school_name}")
+                        except Exception as e:
+                            logger.error(f"加载插件信息失败 {item.name}: {e}")
+                            continue
+        else:
+            logger.warning(f"插件目录不存在: {self.plugins_dir}")
+        
+        # 同时检查内置插件目录
+        builtin_dir = Path(__file__).parent / "school"
+        if builtin_dir.exists():
+            logger.debug(f"检查内置插件目录: {builtin_dir}")
+            for item in builtin_dir.iterdir():
+                if item.is_dir() and item.name not in plugins:  # 只添加尚未在插件目录中的插件
+                    init_file = item / "__init__.py"
+                    if init_file.exists():
+                        try:
+                            # 为了支持相对导入，需要将插件目录添加到 sys.path
+                            import sys
+                            plugin_dir_str = str(item)
+                            if plugin_dir_str not in sys.path:
+                                sys.path.insert(0, plugin_dir_str)
+                            
+                            spec = importlib.util.spec_from_file_location(
+                                f"builtin_school_{item.name}", 
+                                str(init_file)
+                            )
+                            module = importlib.util.module_from_spec(spec)
+                            # 设置模块的 __package__ 属性以支持相对导入
+                            module.__package__ = f"builtin_school_{item.name}"
+                            spec.loader.exec_module(module)
+                            
+                            # 移除临时添加的路径
+                            if plugin_dir_str in sys.path:
+                                sys.path.remove(plugin_dir_str)
+                            
+                            school_name = getattr(module, "SCHOOL_NAME", item.name)
+                            plugins[item.name] = school_name
+                            logger.debug(f"找到内置插件: {item.name} - {school_name}")
+                        except Exception as e:
+                            logger.error(f"加载内置插件信息失败 {item.name}: {e}")
+                            continue
+        else:
+            logger.warning(f"内置插件目录不存在: {builtin_dir}")
+        
+        logger.info(f"共找到 {len(plugins)} 个可用插件")
+        return plugins
+
     def get_plugin_info_from_index(self, school_code: str) -> Optional[Dict[str, Any]]:
         """
         从插件索引中获取指定插件的信息
@@ -552,6 +655,7 @@ class SchoolPluginManager:
             0 if v1 == v2 (无更新)
             -1 if v1 < v2 (当前版本更高)
         """
+        logger.debug(f"版本比较: 远程 {v1} vs 本地 {v2}")
         try:
             # 处理版本号格式 (x.x.x)
             parts1 = [int(x) for x in v1.replace('-', '.').replace('_', '.').split('.') if x.isdigit()]
@@ -565,9 +669,12 @@ class SchoolPluginManager:
             # 比较每个版本段
             for p1, p2 in zip(parts1, parts2):
                 if p1 > p2:
+                    logger.debug(f"版本比较结果: 远程版本更高 ({v1} > {v2})")
                     return 1
                 elif p1 < p2:
+                    logger.debug(f"版本比较结果: 本地版本更高 ({v1} < {v2})")
                     return -1
+            logger.debug(f"版本比较结果: 版本相同 ({v1} == {v2})")
             return 0
         except Exception as e:
             logger.error(f"版本号比较失败: {e}")
@@ -584,6 +691,7 @@ class SchoolPluginManager:
         Returns:
             是否成功安装
         """
+        logger.info(f"开始下载并安装插件: {school_code}")
         try:
             download_url = plugin_info.get('download_url')
             expected_sha256 = plugin_info.get('sha256')
@@ -607,6 +715,7 @@ class SchoolPluginManager:
                 
             try:
                 urllib.request.urlretrieve(download_url, str(zip_path))
+                logger.debug(f"插件 {school_code} 下载完成: {zip_path}")
             except Exception as direct_error:
                 logger.warning(f"直接下载失败: {direct_error}")
                 # 使用代理下载
@@ -617,6 +726,7 @@ class SchoolPluginManager:
                     headers={'User-Agent': 'Capture_Push-SchoolPluginManager'}
                 )
                 urllib.request.urlretrieve(proxy_url, str(zip_path))
+                logger.debug(f"插件 {school_code} 通过代理下载完成: {zip_path}")
                 
             # 如果提供了SHA256，则验证
             if expected_sha256:
@@ -644,16 +754,18 @@ class SchoolPluginManager:
             # 解压插件到目标目录
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(str(final_plugin_dir))
+                logger.debug(f"插件 {school_code} 解压完成")
                 
             # 写入版本信息
             version_file = final_plugin_dir / "version.txt"
             version_file.write_text(plugin_info.get('plugin_version', 'unknown'), encoding='utf-8')
+            logger.info(f"版本信息已写入: {plugin_info.get('plugin_version', 'unknown')}")
                 
             logger.info(f"插件 {school_code} 安装成功")
             return True
                 
         except Exception as e:
-            logger.error(f"下载并安装插件失败: {e}")
+            logger.error(f"下载并安装插件 {school_code} 失败: {e}", exc_info=True)
             return False
     
     def _calculate_file_hash(self, filepath: str) -> str:
@@ -716,46 +828,6 @@ class SchoolPluginManager:
         except Exception as e:
             logger.error(f"加载插件 {school_code} 失败: {e}")
         return None
-    
-    def get_available_plugins(self) -> Dict[str, str]:
-        """
-        获取所有可用的插件列表
-        
-        Returns:
-            院校代码到院校名称的映射
-        """
-        plugins = {}
-        
-        # 从插件目录获取
-        if self.plugins_dir.exists():
-            for item in self.plugins_dir.iterdir():
-                if item.is_dir() and not item.name.startswith('backup_') and not item.name.startswith('v') and item.name != 'current':
-                    init_file = item / "__init__.py"
-                    if init_file.exists():
-                        try:
-                            # 为了支持相对导入，需要将插件目录添加到 sys.path
-                            import sys
-                            plugin_dir_str = str(item)
-                            if plugin_dir_str not in sys.path:
-                                sys.path.insert(0, plugin_dir_str)
-                            spec = importlib.util.spec_from_file_location(
-                                f"plugins_school_{item.name}", 
-                                str(init_file)
-                            )
-                            module = importlib.util.module_from_spec(spec)
-                            # 设置模块的 __package__ 属性以支持相对导入
-                            module.__package__ = f"plugins_school_{item.name}"
-                            spec.loader.exec_module(module)
-                            # 移除临时添加的路径
-                            if plugin_dir_str in sys.path:
-                                sys.path.remove(plugin_dir_str)
-                            
-                            school_name = getattr(module, "SCHOOL_NAME", item.name)
-                            plugins[item.name] = school_name
-                        except Exception:
-                            continue
-        
-        return plugins
 
 
 # 全局插件管理器实例（延迟初始化）

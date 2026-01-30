@@ -33,8 +33,10 @@ class SoftwareSettingsTab(BaseTab):
                 self.config_manager["software_settings"] = {}
             self.config_manager["software_settings"]["autostart_tray"] = str(autostart_enabled)
             
-            # 成功更新后显示提示
-            QMessageBox.information(self, "成功", f"开机自启{'已启用' if autostart_enabled else '已禁用'}")
+            # 成功更新后在状态栏显示提示（不弹窗）
+            main_window = self.window()  # 获取顶级窗口 (ConfigWindow)
+            if hasattr(main_window, 'status_bar'):
+                main_window.status_bar.showMessage(f"开机自启 {'已启用' if autostart_enabled else '已禁用'}", 2000)
             
         except PermissionError as e:
             logger.error(f"更新自启动设置时权限不足: {e}")
@@ -139,14 +141,18 @@ class SoftwareSettingsTab(BaseTab):
             if registry_autostart_status != config_autostart_status:
                 self.config_manager["software_settings"]["autostart_tray"] = str(registry_autostart_status)
             
+            self.autostart_enabled.blockSignals(True)  # 阻止在初始化时触发信号
             self.autostart_enabled.setChecked(registry_autostart_status)
+            self.autostart_enabled.blockSignals(False)  # 恢复信号连接
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"读取自启动状态时发生错误: {e}，使用配置文件中的默认值")
             # 发生错误时，使用配置文件中的状态
             config_autostart_status = self.config_manager.getboolean("software_settings", "autostart_tray", fallback=False)
+            self.autostart_enabled.blockSignals(True)  # 阻止在初始化时触发信号
             self.autostart_enabled.setChecked(config_autostart_status)
+            self.autostart_enabled.blockSignals(False)  # 恢复信号连接
 
     def save_config(self):
         if "loop_getCourseGrades" not in self.config_manager:
