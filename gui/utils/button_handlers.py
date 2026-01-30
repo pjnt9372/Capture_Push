@@ -145,64 +145,67 @@ def handle_export_config_button_clicked(config_window_instance):
     """
     logger.info("导出配置按钮被点击")
     try:
-        # 1. 首先尝试调用Windows Hello认证
-        auth_success = verify_user_credentials()
+        # 1. 首先进行 Windows Hello 验证
+        from core.utils.windows_auth import verify_user_credentials
+        if not verify_user_credentials():
+            logger.warning("Windows 身份验证未通过或已取消，无法导出配置。")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(config_window_instance, "验证取消", "Windows 身份验证未通过或已取消，无法导出配置。")
+            logger.info("Windows 身份验证未通过或已取消。")
+            return
 
-        if not auth_success:
-            # 2. 如果Windows Hello认证失败，尝试使用教务系统密码验证
-            logger.info("Windows Hello 认证失败或不可用，尝试使用教务系统密码验证")
-            auth_success = verify_with_school_password(config_window_instance)
+        logger.info("Windows 身份验证成功。")
 
-        if auth_success:
-            logger.info("身份验证成功")
-            # 3. 认证成功后，选择文件路径并导出
-            file_path, _ = QFileDialog.getSaveFileName(
-                config_window_instance,
-                "导出明文配置",
-                "config_plaintext.ini",
-                "INI Files (*.ini);;All Files (*)"
-            )
-            
-            if not file_path:
-                logger.info("用户取消了文件保存")
-                return
+        # 2. 验证通过，执行导出逻辑
+        # 选择文件路径并导出
+        file_path, _ = QFileDialog.getSaveFileName(
+            config_window_instance,
+            "导出明文配置",
+            "config_plaintext.ini",
+            "INI Files (*.ini);;All Files (*)"
+        )
+        
+        if not file_path:
+            logger.info("用户取消了文件保存")
+            return
 
-            # 加载当前加密配置字典
-            from core.config_manager import load_config
-            import configparser
+        # 加载当前加密配置字典
+        from core.config_manager import load_config
+        import configparser
+        
+        current_config = load_config()
+        
+        # 创建新的 ConfigParser 来保存明文
+        plaintext_cfg = configparser.ConfigParser()
+        
+        # 遍历并填入数据
+        for section, options in current_config.items():
+            # 修复 'DEFAULT' 导致的 Invalid section name 错误
+            if section.upper() == 'DEFAULT':
+                # DEFAULT 节在 ConfigParser 中是内置的，直接写入 options
+                for key, value in options.items():
+                    plaintext_cfg.set('DEFAULT', key, str(value))
+            else:
+                # 普通节：如果不存在则创建
+                if not plaintext_cfg.has_section(section):
+                    plaintext_cfg.add_section(section)
+                for key, value in options.items():
+                    plaintext_cfg.set(section, key, str(value))
+        
+        # 写入文件
+        with open(file_path, 'w', encoding='utf-8') as f:
+            plaintext_cfg.write(f)
             
-            current_config = load_config()
-            
-            # 创建新的 ConfigParser 来保存明文
-            plaintext_cfg = configparser.ConfigParser()
-            
-            # 遍历并填入数据
-            for section, options in current_config.items():
-                # 修复 'DEFAULT' 导致的 Invalid section name 错误
-                if section.upper() == 'DEFAULT':
-                    # DEFAULT 节在 ConfigParser 中是内置的，直接写入 options
-                    for key, value in options.items():
-                        plaintext_cfg.set('DEFAULT', key, str(value))
-                else:
-                    # 普通节：如果不存在则创建
-                    if not plaintext_cfg.has_section(section):
-                        plaintext_cfg.add_section(section)
-                    for key, value in options.items():
-                        plaintext_cfg.set(section, key, str(value))
-            
-            # 写入文件
-            with open(file_path, 'w', encoding='utf-8') as f:
-                plaintext_cfg.write(f)
-                
-            logger.info(f"配置成功导出至: {file_path}")
-            QMessageBox.information(config_window_instance, "成功", f"明文配置已导出至：\n{file_path}\n\n请注意：此文件包含明文密码，请妥善保管！")
-        else:
-            logger.info("身份验证失败或被取消")
-            QMessageBox.warning(config_window_instance, "认证失败", "无法导出配置：身份验证未通过。")
+        logger.info(f"配置成功导出至: {file_path}")
+        QMessageBox.information(config_window_instance, "成功", f"明文配置已导出至：\n{file_path}\n\n请注意：此文件包含明文密码，请妥善保管！")
 
     except Exception as e:
-        logger.error(f"处理导出配置时发生错误: {e}")
-        QMessageBox.critical(config_window_instance, "错误", f"导出配置时发生错误: {str(e)}")
+        logger.error(f"导出过程中发生错误: {e}")
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(config_window_instance, "导出失败", f"导出过程中发生错误：\n{str(e)}")
+        logger.error(f"导出明文配置失败: {e}")
+        import traceback
+        traceback.print_exc()
 
 def handle_import_config_button_clicked(config_window_instance):
     """
