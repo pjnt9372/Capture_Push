@@ -1,16 +1,16 @@
-name: Build and Release School Plugin with Index Update
+name: Manual Build and Release School Plugin with Index Update
 
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Branch to checkout'
+        required: true
+        default: 'main'
       school_code:
         description: 'School code to build (e.g., 10546)'
         required: true
         default: '10546'
-      version:
-        description: 'Version number (e.g., 1.0.0)'
-        required: true
-        default: '1.0.0'
 
 jobs:
   build:
@@ -18,19 +18,24 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.inputs.branch || 'main' }}
     
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         
-    - name: Get school code and version
+    - name: Get branch and school code
       id: vars
       run: |
+        BRANCH=${{ github.event.inputs.branch || 'main' }}
         SCHOOL_CODE=${{ github.event.inputs.school_code || '10546' }}
-        VERSION=${{ github.event.inputs.version || '1.0.0' }}
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        echo "BRANCH=$BRANCH" >> $GITHUB_ENV
         echo "SCHOOL_CODE=$SCHOOL_CODE" >> $GITHUB_ENV
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+        echo "Using branch: $BRANCH, school code: $SCHOOL_CODE, timestamp: $TIMESTAMP"
         
     - name: Prepare plugin directory
       run: |
@@ -76,7 +81,7 @@ jobs:
 
         # Create new plugin info - use a single line command to avoid YAML issues
         SCHOOL_CODE_ESCAPED=$(printf '%s\n' "${{ env.SCHOOL_CODE }}" | sed 's/"/\\"/g')
-        VERSION_ESCAPED=$(printf '%s\n' "${{ env.VERSION }}" | sed 's/"/\\"/g')
+        VERSION_ESCAPED=$(printf '%s\n' "${{ env.TIMESTAMP }}" | sed 's/"/\"/g')
         URL_ESCAPED="https://github.com/pjnt9372/Capture_Push_School_Plugins/releases/download/plugin%2Flatest/school_${{ env.SCHOOL_CODE }}_plugin.zip"
         URL_ESCAPED=$(printf '%s\n' "$URL_ESCAPED" | sed 's/"/\\"/g')
         
@@ -100,9 +105,10 @@ jobs:
         tag_name: plugin/latest
         name: Latest Plugin Release
         body: |
-          School Plugin for code ${{ env.SCHOOL_CODE }}
+          Manual Build - School Plugin for code ${{ env.SCHOOL_CODE }}
           Timestamp: ${{ env.TIMESTAMP }}
-          Contributor: ${{ github.actor }}
+          Triggered by: ${{ github.actor }}
+          Build Type: Manual
           
           ```json
           {
@@ -126,5 +132,5 @@ jobs:
         cd repo
         cp ../plugins_index.json .
         git add plugins_index.json
-        git commit -m "Update plugins_index.json for ${{ env.SCHOOL_CODE }} v${{ env.VERSION }} [skip ci]" || echo "No changes to commit"
+        git commit -m "Update plugins_index.json for ${{ env.SCHOOL_CODE }} timestamp_${{ env.TIMESTAMP }} [skip ci]" || echo "No changes to commit"
         git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/pjnt9372/Capture_Push_School_Plugins.git main || echo "Push failed"
