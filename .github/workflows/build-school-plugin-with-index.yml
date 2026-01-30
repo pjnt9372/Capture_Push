@@ -3,6 +3,10 @@ name: Manual Build and Release School Plugin with Index Update
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Branch to checkout'
+        required: true
+        default: 'master'
       school_code:
         description: 'School code to build (e.g., 10546)'
         required: true
@@ -14,20 +18,24 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.inputs.branch || 'master' }}
     
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         
-    - name: Get school code
+    - name: Get branch and school code
       id: vars
       run: |
+        BRANCH=${{ github.event.inputs.branch || 'master' }}
         SCHOOL_CODE=${{ github.event.inputs.school_code || '10546' }}
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        echo "BRANCH=$BRANCH" >> $GITHUB_ENV
         echo "SCHOOL_CODE=$SCHOOL_CODE" >> $GITHUB_ENV
         echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
-        echo "Using school code: $SCHOOL_CODE, timestamp: $TIMESTAMP"
+        echo "Using branch: $BRANCH, school code: $SCHOOL_CODE, timestamp: $TIMESTAMP"
         
     - name: Prepare plugin directory
       run: |
@@ -59,7 +67,7 @@ jobs:
         
     - name: Download existing plugins_index.json
       run: |
-        curl -o plugins_index.json https://raw.githubusercontent.com/${{ github.repository }}/main/plugins_index.json || echo '{"plugins":[]}' > plugins_index.json
+        curl -o plugins_index.json https://raw.githubusercontent.com/${{ github.repository }}/${{ env.BRANCH }}/plugins_index.json || echo '{"plugins":[]}' > plugins_index.json
         
     - name: Update plugins_index.json
       run: |
@@ -123,4 +131,4 @@ jobs:
         git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         git add plugins_index.json
         git commit -m "Update plugins_index.json for ${{ env.SCHOOL_CODE }} timestamp_${{ env.TIMESTAMP }} [skip ci]" || echo "No changes to commit"
-        git push origin main || echo "Push failed"
+        git push origin ${{ env.BRANCH }} || echo "Push failed"
