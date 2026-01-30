@@ -60,7 +60,7 @@ Name: "{localappdata}\Capture_Push"
 
 [Registry]
 Root: HKLM64; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue
-Root: HKLM64; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue dontcreatekey; Tasks: autostart
+Root: HKCU64; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue dontcreatekey; Tasks: autostart
 
 [Run]
 Filename: "{app}\Capture_Push_tray.exe"; Flags: nowait postinstall ; Description: "启动 Capture_Push 托盘程序"

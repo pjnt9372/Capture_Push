@@ -4,11 +4,12 @@ import logging
 import os
 from typing import Dict
 
+import ctypes
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QStatusBar, QMenuBar, QToolBar
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon
 
 # 导入选项卡
 from gui.tabs.home_tab import HomeTab
@@ -37,6 +38,42 @@ class ConfigWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Capture_Push - 配置")
         self.setGeometry(100, 100, 500, 700)
+        
+        # 设置窗口图标
+        try:
+            import os
+            from pathlib import Path
+            import sys
+            
+            icon_path = None
+            
+            # 计算资源路径 - 尝试多种可能的路径
+            BASE_DIR = Path(__file__).resolve().parent.parent
+            possible_paths = [
+                BASE_DIR / "resources" / "app_icon.ico",  # 开发环境路径
+                Path(sys.prefix) / "resources" / "app_icon.ico",  # 安装环境路径
+                Path.cwd() / "resources" / "app_icon.ico",  # 当前工作目录
+                Path(sys.executable).parent / "resources" / "app_icon.ico"  # 可执行文件所在目录
+            ]
+            
+            for path in possible_paths:
+                if path.exists():
+                    icon_path = path
+                    break
+            
+            if icon_path:
+                self.setWindowIcon(QIcon(str(icon_path)))
+                
+                # 在Windows上额外确保任务栏图标正确显示
+                if sys.platform == "win32":
+                    try:
+                        # 使用ctypes设置应用程序组ID，这有助于Windows识别任务栏图标
+                        myappid = 'Capture_Push.GUI.1'
+                        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+                    except Exception as e:
+                        logger.error(f"无法设置Windows AppUserModelID: {e}")
+        except Exception as e:
+            logger.error(f"无法设置主窗口图标: {e}")
         
         # 初始化配置管理器
         try:

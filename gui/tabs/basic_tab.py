@@ -35,11 +35,26 @@ class BasicTab(BaseTab):
         layout.addStretch()
 
     def load_config(self):
-        # 院校 - 总是默认显示占位符，让用户手动选择
-        placeholder_index = self.school_combo.findData("12345")
-        if placeholder_index >= 0:
-            self.school_combo.setCurrentIndex(placeholder_index)
-        # 但仍需加载其他账户信息
+        # 加载学校代码
+        saved_school_code = self.config_manager.get("account", "school_code", fallback="")
+        
+        # 如果已保存学校代码且不是占位符，则设置为该学校
+        if saved_school_code and saved_school_code != "12345":
+            saved_index = self.school_combo.findData(saved_school_code)
+            if saved_index >= 0:
+                self.school_combo.setCurrentIndex(saved_index)
+            else:
+                # 如果保存的学校代码不存在于列表中，则显示占位符
+                placeholder_index = self.school_combo.findData("12345")
+                if placeholder_index >= 0:
+                    self.school_combo.setCurrentIndex(placeholder_index)
+        else:
+            # 否则显示占位符
+            placeholder_index = self.school_combo.findData("12345")
+            if placeholder_index >= 0:
+                self.school_combo.setCurrentIndex(placeholder_index)
+        
+        # 加载其他账户信息
         self.username.setText(self.config_manager.get("account", "username", fallback=""))
         self.password.setText(self.config_manager.get("account", "password", fallback=""))
 

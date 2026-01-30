@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 from PySide6.QtWidgets import (
     QWidget, QMessageBox, QFileDialog, QPushButton,
     QCheckBox, QLineEdit, QSpinBox, QTextEdit, QGroupBox,
-    QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QScrollArea
+    QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QScrollArea, QInputDialog
 )
 from PySide6.QtCore import Qt, Signal, QObject, QThread
 from PySide6.QtGui import QFont, QPixmap, QIcon
@@ -22,18 +22,66 @@ default_config = {} # 临时占位
 from core.utils.dpapi import encrypt_file, decrypt_file_to_str
 from core.utils.windows_auth import verify_user_credentials
 # from core.utils.network import send_test_email, fetch_school_times, fetch_school_list # 模块尚未创建
-# from core.utils.registry import set_autostart # 模块尚未创建
+from core.utils.registry import set_autostart
 # from core.utils.validation import validate_email # 模块尚未创建
 
 def send_test_email(*args, **kwargs): return False, "Module not implemented"
 def fetch_school_times(*args, **kwargs): return []
 def fetch_school_list(*args, **kwargs): return []
-def set_autostart(*args, **kwargs): pass
 def validate_email(email): return "@" in email
 
 
 from gui.widgets.collapsible_box import CollapsibleBox
 from gui.tabs.base_tab import BaseTab # 导入选项卡基类
+
+
+def verify_with_school_password(parent_window):
+    """
+    使用教务系统密码进行验证
+    Args:
+        parent_window: 父窗口实例
+    Returns:
+        bool: 验证是否成功
+    """
+    from PySide6.QtWidgets import QInputDialog, QMessageBox
+    from core.config_manager import load_config
+    
+    try:
+        # 从配置中获取教务系统用户名和密码
+        config = load_config()
+        
+        # 尝试获取教务系统登录凭据
+        username = config.get('account', 'username', fallback='')
+        password = config.get('account', 'password', fallback='')
+        
+        if not username or not password:
+            logger.warning("配置中缺少教务系统登录凭据")
+            return False
+        
+        # 弹出输入对话框让用户输入教务系统密码
+        entered_password, ok = QInputDialog.getText(
+            parent_window,
+            "教务系统验证",
+            f"请输入用户 {username} 的教务系统密码进行验证:\n(用于确认身份以导出配置)",
+            echo=QLineEdit.Password
+        )
+        
+        if ok and entered_password:
+            # 验证输入的密码是否与配置中的密码匹配
+            if entered_password == password:
+                logger.info("教务系统密码验证成功")
+                return True
+            else:
+                logger.info("教务系统密码验证失败")
+                QMessageBox.warning(parent_window, "验证失败", "教务系统密码不正确！")
+                return False
+        else:
+            logger.info("用户取消了教务系统密码验证")
+            return False
+            
+    except Exception as e:
+        logger.error(f"教务系统密码验证过程中发生错误: {e}")
+        return False
 
 logger = logging.getLogger(__name__)
 
@@ -91,38 +139,66 @@ def handle_reset_config_button_clicked(config_window_instance):
 def handle_export_config_button_clicked(config_window_instance):
     """
     处理“导出明文配置”按钮的点击事件。
-    触发 Windows Hello 认证。
+    首先尝试 Windows Hello 认证，如果不可用则使用教务系统密码验证。
     Args:
         config_window_instance (ConfigWindow): 主窗口实例。
     """
     logger.info("导出配置按钮被点击")
     try:
-        # 1. 尝试调用Windows Hello认证
+        # 1. 首先尝试调用Windows Hello认证
         auth_success = verify_user_credentials()
 
+        if not auth_success:
+            # 2. 如果Windows Hello认证失败，尝试使用教务系统密码验证
+            logger.info("Windows Hello 认证失败或不可用，尝试使用教务系统密码验证")
+            auth_success = verify_with_school_password(config_window_instance)
+
         if auth_success:
-            logger.info("Windows Hello 认证成功")
-            # 2. 认证成功后，选择文件路径并导出
+            logger.info("身份验证成功")
+            # 3. 认证成功后，选择文件路径并导出
             file_path, _ = QFileDialog.getSaveFileName(
                 config_window_instance,
-                "导出配置",
-                "",
+                "导出明文配置",
+                "config_plaintext.ini",
                 "INI Files (*.ini);;All Files (*)"
             )
-            if file_path:
-                encrypted_path = Path("config.ini.enc") # 假设加密文件路径
-                if encrypted_path.exists():
-                    plaintext_config = decrypt_file_to_str(str(encrypted_path))
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(plaintext_config)
-                    logger.info(f"配置已导出到: {file_path}")
-                    QMessageBox.information(config_window_instance, "成功", f"配置已导出到: {file_path}")
+            
+            if not file_path:
+                logger.info("用户取消了文件保存")
+                return
+
+            # 加载当前加密配置字典
+            from core.config_manager import load_config
+            import configparser
+            
+            current_config = load_config()
+            
+            # 创建新的 ConfigParser 来保存明文
+            plaintext_cfg = configparser.ConfigParser()
+            
+            # 遍历并填入数据
+            for section, options in current_config.items():
+                # 修复 'DEFAULT' 导致的 Invalid section name 错误
+                if section.upper() == 'DEFAULT':
+                    # DEFAULT 节在 ConfigParser 中是内置的，直接写入 options
+                    for key, value in options.items():
+                        plaintext_cfg.set('DEFAULT', key, str(value))
                 else:
-                    logger.warning("加密配置文件不存在，无法导出")
-                    QMessageBox.warning(config_window_instance, "警告", "找不到加密配置文件，无法导出。")
+                    # 普通节：如果不存在则创建
+                    if not plaintext_cfg.has_section(section):
+                        plaintext_cfg.add_section(section)
+                    for key, value in options.items():
+                        plaintext_cfg.set(section, key, str(value))
+            
+            # 写入文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                plaintext_cfg.write(f)
+                
+            logger.info(f"配置成功导出至: {file_path}")
+            QMessageBox.information(config_window_instance, "成功", f"明文配置已导出至：\n{file_path}\n\n请注意：此文件包含明文密码，请妥善保管！")
         else:
-            logger.info("Windows Hello 认证失败或被取消")
-            QMessageBox.warning(config_window_instance, "认证失败", "无法导出配置：认证未通过。")
+            logger.info("身份验证失败或被取消")
+            QMessageBox.warning(config_window_instance, "认证失败", "无法导出配置：身份验证未通过。")
 
     except Exception as e:
         logger.error(f"处理导出配置时发生错误: {e}")
