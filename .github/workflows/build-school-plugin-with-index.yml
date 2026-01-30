@@ -3,6 +3,10 @@ name: Manual Build and Release School Plugin with Index Update
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Branch to checkout'
+        required: true
+        default: 'master'
       school_code:
         description: 'School code to build (e.g., 10546)'
         required: true
@@ -15,7 +19,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
       with:
-        ref: ${{ github.event.inputs.branch || 'main' }}
+        ref: ${{ github.event.inputs.branch || 'master' }}
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -25,7 +29,7 @@ jobs:
     - name: Get branch and school code
       id: vars
       run: |
-        BRANCH=${{ github.event.inputs.branch || 'main' }}
+        BRANCH=${{ github.event.inputs.branch || 'master' }}
         SCHOOL_CODE=${{ github.event.inputs.school_code || '10546' }}
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         echo "BRANCH=$BRANCH" >> $GITHUB_ENV
@@ -63,7 +67,7 @@ jobs:
         
     - name: Download existing plugins_index.json
       run: |
-        curl -o plugins_index.json https://raw.githubusercontent.com/pjnt9372/Capture_Push_School_Plugins/main/plugins_index.json || echo '{"plugins":[]}' > plugins_index.json
+        curl -o plugins_index.json https://raw.githubusercontent.com/${{ github.repository }}/${{ env.BRANCH }}/plugins_index.json || echo '{"plugins":[]}' > plugins_index.json
         
     - name: Update plugins_index.json
       run: |
@@ -124,9 +128,7 @@ jobs:
       run: |
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git clone https://github.com/pjnt9372/Capture_Push_School_Plugins.git repo
-        cd repo
-        cp ../plugins_index.json .
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         git add plugins_index.json
         git commit -m "Update plugins_index.json for ${{ env.SCHOOL_CODE }} timestamp_${{ env.TIMESTAMP }} [skip ci]" || echo "No changes to commit"
-        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/pjnt9372/Capture_Push_School_Plugins.git main || echo "Push failed"
+        git push origin ${{ env.BRANCH }} || echo "Push failed"
