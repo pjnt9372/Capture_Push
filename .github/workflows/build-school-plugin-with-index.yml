@@ -82,7 +82,7 @@ jobs:
 
         # Create new plugin info - use a single line command to avoid YAML issues
         SCHOOL_CODE_ESCAPED=$(printf '%s\n' "${{ env.SCHOOL_CODE }}" | sed 's/"/\\"/g')
-        VERSION_ESCAPED=$(printf '%s\n' "${{ env.TIMESTAMP }}" | sed 's/"/\"/g')
+        VERSION_ESCAPED=$(printf '%s\n' "${{ env.TIMESTAMP }}" | sed 's/"/\\"/g')
         URL_ESCAPED="https://github.com/pjnt9372/Capture_Push_School_Plugins/releases/download/plugin%2Flatest/school_${{ env.SCHOOL_CODE }}_plugin.zip"
         URL_ESCAPED=$(printf '%s\n' "$URL_ESCAPED" | sed 's/"/\\"/g')
         
@@ -125,7 +125,6 @@ jobs:
           school_${{ env.SCHOOL_CODE }}_plugin.zip
         draft: false
         prerelease: false
-        make_latest: true
 
     - name: Upload plugins_index.json as artifact
       uses: actions/upload-artifact@v4
