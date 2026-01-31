@@ -4,7 +4,8 @@
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QMenu
+    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QMenu,
+    QLabel, QLineEdit
 )
 from PySide6.QtCore import Qt, QThread, Signal
 import logging
@@ -18,11 +19,24 @@ class PluginManagementTab(QWidget):
         super().__init__(parent)
         self.config_manager = config_manager
         self.plugin_manager = get_plugin_manager()
+        # 防止重复点击的标志
+        self.operation_in_progress = False
         logger.info("PluginManagementTab 初始化")
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+        
+        # 添加搜索框
+        search_layout = QHBoxLayout()
+        search_label = QLabel('搜索:')
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText('输入院校代码或院校名称进行搜索')
+        self.search_input.textChanged.connect(self.filter_plugins)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
+        
+        layout.addLayout(search_layout)
 
         # 创建表格
         self.plugin_table = QTableWidget()
@@ -38,19 +52,25 @@ class PluginManagementTab(QWidget):
         # 创建按钮布局
         btn_layout = QHBoxLayout()
 
-        self.refresh_btn = QPushButton('刷新插件列表')
         self.check_update_btn = QPushButton('检查更新')
+        
+        # 添加提示标签
+        hint_label = QLabel('右键插件以安装或卸载')
+        hint_label.setStyleSheet('color: gray; font-size: 12px;')
 
-        btn_layout.addWidget(self.refresh_btn)
         btn_layout.addWidget(self.check_update_btn)
+        btn_layout.addWidget(hint_label)
         btn_layout.addStretch()
 
         layout.addWidget(self.plugin_table)
         layout.addLayout(btn_layout)
 
         # 连接信号
-        self.refresh_btn.clicked.connect(self.refresh_plugins)
         self.check_update_btn.clicked.connect(self.check_updates)
+        
+        # 自动加载插件列表
+        self.original_plugins_data = []  # 存储原始插件数据
+        self.auto_load_plugins()
         
         logger.info("PluginManagementTab UI 初始化完成")
 
@@ -99,6 +119,12 @@ class PluginManagementTab(QWidget):
 
     def install_plugin(self, school_code):
         """安装插件"""
+        # 防止重复点击
+        if self.operation_in_progress:
+            logger.info(f"插件 {school_code} 操作已在进行中，忽略重复点击")
+            return
+        
+        self.operation_in_progress = True
         logger.info(f"开始安装插件 {school_code}")
         try:
             # 检查是否有更新
@@ -133,9 +159,17 @@ class PluginManagementTab(QWidget):
         except Exception as e:
             logger.error(f"安装插件 {school_code} 时发生错误: {str(e)}", exc_info=True)
             QMessageBox.critical(self, '错误', f'安装插件时发生错误: {str(e)}')
+        finally:
+            self.operation_in_progress = False
 
     def uninstall_plugin(self, school_code):
         """卸载插件"""
+        # 防止重复点击
+        if self.operation_in_progress:
+            logger.info(f"插件 {school_code} 操作已在进行中，忽略重复点击")
+            return
+        
+        self.operation_in_progress = True
         logger.info(f"开始卸载插件 {school_code}")
         reply = QMessageBox.question(self, '确认', f'确定要卸载院校 {school_code} 的插件吗？', 
                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -158,11 +192,20 @@ class PluginManagementTab(QWidget):
             except Exception as e:
                 logger.error(f"卸载插件 {school_code} 时发生错误: {str(e)}", exc_info=True)
                 QMessageBox.critical(self, '错误', f'卸载插件时发生错误: {str(e)}')
+            finally:
+                self.operation_in_progress = False
         else:
             logger.info(f"用户取消卸载插件 {school_code}")
+            self.operation_in_progress = False
 
     def check_single_plugin_update(self, school_code):
         """检查单个插件更新"""
+        # 防止重复点击
+        if self.operation_in_progress:
+            logger.info(f"插件 {school_code} 操作已在进行中，忽略重复点击")
+            return
+        
+        self.operation_in_progress = True
         logger.info(f"检查单个插件 {school_code} 更新")
         try:
             update_info = self.plugin_manager.check_plugin_update(school_code)
@@ -201,11 +244,13 @@ class PluginManagementTab(QWidget):
         except Exception as e:
             logger.error(f"检查插件 {school_code} 更新时发生错误: {str(e)}", exc_info=True)
             QMessageBox.critical(self, '错误', f'检查更新时发生错误: {str(e)}')
+        finally:
+            self.operation_in_progress = False
 
     def refresh_single_row(self, school_code):
         """刷新单行数据"""
         logger.debug(f"刷新单行数据: {school_code}")
-        for row in range(self.plugin_table.rowCount()):
+        for row in range(self.plugin_table.rowCount()): 
             code_item = self.plugin_table.item(row, 0)
             if code_item and code_item.text() == school_code:
                 # 更新当前版本
@@ -213,11 +258,22 @@ class PluginManagementTab(QWidget):
                 current_ver_item = QTableWidgetItem(current_version if current_version != "0.0.0" else "未安装")
                 current_ver_item.setFlags(current_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 2, current_ver_item)
-                logger.debug(f"已更新 {school_code} 的版本信息为: {current_version if current_version != '0.0.0' else '未安装'}")
+                    
+                # 尝试更新贡献者信息
+                plugin_info = self.plugin_manager.get_plugin_info_from_index(school_code)
+                if plugin_info and 'contributor' in plugin_info:
+                    contributor = plugin_info.get('contributor', 'Unknown')
+                else:
+                    contributor = 'Unknown'
+                contributor_item = QTableWidgetItem(contributor)
+                contributor_item.setFlags(contributor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 4, contributor_item)
+                    
+                logger.debug(f"已更新 {school_code} 的版本信息为: {current_version if current_version != '0.0.0' else '未安装'}，贡献者: {contributor}")
                 break
 
     def refresh_plugins(self):
-        """刷新插件列表"""
+        """刷新插件列表（已弃用，使用auto_load_plugins替代）"""
         logger.info("开始刷新插件列表")
         try:
             # 清除插件索引缓存，强制重新获取最新数据
@@ -233,9 +289,13 @@ class PluginManagementTab(QWidget):
                 for plugin in plugins_list:
                     school_code = plugin.get('school_code')
                     school_name = plugin.get('school_name', school_code)
+                    contributor = plugin.get('contributor', 'Unknown')
                     if school_code:
-                        all_plugins[school_code] = school_name
-                        logger.debug(f"插件索引中找到: {school_code} - {school_name}")
+                        all_plugins[school_code] = {
+                            'name': school_name,
+                            'contributor': contributor
+                        }
+                        logger.debug(f"插件索引中找到: {school_code} - {school_name} - {contributor}")
             else:
                 logger.warning("无法获取插件索引或插件索引为空")
             
@@ -244,17 +304,20 @@ class PluginManagementTab(QWidget):
             logger.info(f"已安装插件数量: {len(installed_plugins)}")
             for code, name in installed_plugins.items():
                 logger.debug(f"已安装插件: {code} - {name}")
+                if code not in all_plugins:
+                    all_plugins[code] = {
+                        'name': name,
+                        'contributor': 'Unknown'
+                    }
             
-            # 合并插件列表，确保所有索引中的插件都显示（即使未安装）
-            combined_plugins = dict(all_plugins)
-            combined_plugins.update(installed_plugins)  # 已安装的插件可能会提供更准确的名称
+            logger.info(f"合并后插件总数: {len(all_plugins)}")
             
-            logger.info(f"合并后插件总数: {len(combined_plugins)}")
+            self.plugin_table.setRowCount(len(all_plugins))
             
-            self.plugin_table.setRowCount(len(combined_plugins))
-            
-            for row, (code, name) in enumerate(combined_plugins.items()):
-                logger.debug(f"填充第 {row} 行: {code} - {name}")
+            for row, (code, data) in enumerate(all_plugins.items()):
+                name = data['name']
+                contributor = data['contributor']
+                logger.debug(f"填充第 {row} 行: {code} - {name} - {contributor}")
                 # 院校代码
                 code_item = QTableWidgetItem(code)
                 code_item.setFlags(code_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -278,8 +341,8 @@ class PluginManagementTab(QWidget):
                 latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 3, latest_ver_item)
                 
-                # 贡献者（暂时显示为未知，需要检查更新后才能知道）
-                contributor_item = QTableWidgetItem('-')
+                # 贡献者
+                contributor_item = QTableWidgetItem(contributor)
                 contributor_item.setFlags(contributor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 4, contributor_item)
                 
@@ -325,6 +388,143 @@ class PluginManagementTab(QWidget):
         except Exception as e:
             logger.error(f"检查更新失败: {str(e)}", exc_info=True)
             QMessageBox.critical(self, '错误', f'检查更新失败: {str(e)}')
+    
+    def auto_load_plugins(self):
+        """自动加载插件列表"""
+        logger.info("开始自动加载插件列表")
+        try:
+            # 清除插件索引缓存，强制重新获取最新数据
+            logger.debug("清除插件索引缓存")
+            self.plugin_manager.clear_plugins_index_cache()
+            
+            # 获取所有可用插件（从索引文件）
+            all_plugins = {}
+            plugins_index = self.plugin_manager._fetch_plugins_index()
+            if plugins_index and isinstance(plugins_index, dict):
+                plugins_list = plugins_index.get('plugins', [])
+                logger.info(f"从插件索引获取到 {len(plugins_list)} 个插件")
+                for plugin in plugins_list:
+                    school_code = plugin.get('school_code')
+                    school_name = plugin.get('school_name', school_code)
+                    contributor = plugin.get('contributor', 'Unknown')
+                    if school_code:
+                        all_plugins[school_code] = {
+                            'name': school_name,
+                            'contributor': contributor
+                        }
+                        logger.debug(f"插件索引中找到: {school_code} - {school_name} - {contributor}")
+            else:
+                logger.warning("无法获取插件索引或插件索引为空")
+            
+            # 同时获取已安装的插件
+            installed_plugins = self.plugin_manager.get_available_plugins()
+            logger.info(f"已安装插件数量: {len(installed_plugins)}")
+            for code, name in installed_plugins.items():
+                logger.debug(f"已安装插件: {code} - {name}")
+                if code not in all_plugins:
+                    all_plugins[code] = {
+                        'name': name,
+                        'contributor': 'Unknown'
+                    }
+            
+            logger.info(f"合并后插件总数: {len(all_plugins)}")
+            
+            # 存储原始插件数据
+            self.original_plugins_data = []
+            for code, data in all_plugins.items():
+                self.original_plugins_data.append({
+                    'code': code,
+                    'name': data['name'],
+                    'contributor': data['contributor']
+                })
+            
+            # 显示插件列表
+            self.display_plugins(self.original_plugins_data)
+            
+            logger.info("插件列表自动加载完成")
+        except Exception as e:
+            logger.error(f"自动加载插件列表失败: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, '错误', f'自动加载插件列表失败: {str(e)}')
+    
+    def display_plugins(self, plugins_list):
+        """显示插件列表"""
+        try:
+            self.plugin_table.setRowCount(len(plugins_list))
+            
+            for row, plugin in enumerate(plugins_list):
+                code = plugin['code']
+                name = plugin['name']
+                contributor = plugin['contributor']
+                
+                logger.debug(f"填充第 {row} 行: {code} - {name} - {contributor}")
+                
+                # 院校代码
+                code_item = QTableWidgetItem(code)
+                code_item.setFlags(code_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 0, code_item)
+                
+                # 院校名称
+                name_item = QTableWidgetItem(name)
+                name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 1, name_item)
+                
+                # 当前版本 - 检查是否已安装
+                current_version = self.plugin_manager._get_local_plugin_version(code)
+                version_display = current_version if current_version != "0.0.0" else "未安装"
+                logger.debug(f"插件 {code} 当前版本: {version_display}")
+                current_ver_item = QTableWidgetItem(version_display)
+                current_ver_item.setFlags(current_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 2, current_ver_item)
+                
+                # 最新版本（暂时显示为未知，需要检查更新后才能知道）
+                latest_ver_item = QTableWidgetItem('-')
+                latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 3, latest_ver_item)
+                
+                # 贡献者
+                contributor_item = QTableWidgetItem(contributor)
+                contributor_item.setFlags(contributor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 4, contributor_item)
+                
+        except Exception as e:
+            logger.error(f"显示插件列表失败: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, '错误', f'显示插件列表失败: {str(e)}')
+    
+    def filter_plugins(self):
+        """根据搜索条件过滤插件"""
+        import re
+        search_text = self.search_input.text().strip()
+        if not search_text:
+            # 如果搜索框为空，显示所有插件
+            self.display_plugins(self.original_plugins_data)
+        else:
+            # 使用正则表达式进行匹配
+            try:
+                # 编译正则表达式，忽略大小写
+                pattern = re.compile(search_text, re.IGNORECASE)
+                
+                # 根据搜索词过滤插件
+                filtered_plugins = []
+                for plugin in self.original_plugins_data:
+                    # 检查院校代码或院校名称是否匹配正则表达式
+                    if (pattern.search(plugin['code']) or 
+                        pattern.search(plugin['name'])):
+                        filtered_plugins.append(plugin)
+                
+                # 显示过滤后的插件
+                self.display_plugins(filtered_plugins)
+            except re.error:
+                # 如果正则表达式无效，回退到简单的子字符串匹配
+                search_text_lower = search_text.lower()
+                filtered_plugins = []
+                for plugin in self.original_plugins_data:
+                    # 检查院校代码或院校名称是否包含搜索词
+                    if (search_text_lower in plugin['code'].lower() or 
+                        search_text_lower in plugin['name'].lower()):
+                        filtered_plugins.append(plugin)
+                
+                # 显示过滤后的插件
+                self.display_plugins(filtered_plugins)
 
 
 class PluginUpdateWorker(QThread):
