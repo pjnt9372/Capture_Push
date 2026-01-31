@@ -25,7 +25,7 @@ OutputDir=Output
 OutputBaseFilename=Capture_Push_Setup
 Compression=lzma2/normal
 SolidCompression=yes
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 WizardStyle=modern
 AppMutex=Capture_PushTrayAppMutex
 ArchitecturesInstallIn64BitMode=x64
@@ -44,15 +44,13 @@ Name: autostart; Description: "开机自动启动托盘程序"; GroupDescription
 
 [Files]
 Source: ".venv\*"; DestDir: "{app}\.venv"; Flags: ignoreversion recursesubdirs
-Source: "core\school\12345\*"; DestDir: "{app}\core\school\12345"; Flags: ignoreversion recursesubdirs
-Source: "core\plugins\school\12345\*"; DestDir: "{app}\core\plugins\school\12345"; Flags: ignoreversion recursesubdirs
+Source: "core\plugins\*"; DestDir: "{app}\core\plugins"; Flags: ignoreversion recursesubdirs
 Source: "core\config_manager.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\go.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\log.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\push.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\updater.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\utils\*"; DestDir: "{app}\core\utils"; Flags: ignoreversion recursesubdirs
-Source: "core\plugins\school_plugin_manager.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "gui\*"; DestDir: "{app}\gui"; Flags: ignoreversion recursesubdirs
 Source: "resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs
 Source: "VERSION"; DestDir: "{app}"; Flags: ignoreversion
@@ -64,11 +62,11 @@ Source: "tray\build\Release\Capture_Push_tray.exe"; DestDir: "{app}"; Flags: ign
 Name: "{group}\Capture_Push托盘"; Filename: "{app}\Capture_Push_tray.exe"
 Name: "{group}\配置工具"; Filename: "{app}\.venv\pythonw.exe"; Parameters: """{app}\gui\gui.py"""
 Name: "{group}\卸载Capture_Push"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\Capture_Push"; Filename: "{app}\Capture_Push_tray.exe"; Tasks: desktopicon
+Name: "{userdesktop}\Capture_Push"; Filename: "{app}\Capture_Push_tray.exe"; Tasks: desktopicon
 
 [Registry]
-Root: HKLM64; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue
-Root: HKCU64; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: """{app}\Capture_Push_tray.exe"""; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "SOFTWARE\Capture_Push"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletevalue
+Root: HKCU64; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Capture_Push_Tray"; ValueData: "{app}\Capture_Push_tray.exe"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 Filename: "{app}\.venv\python.exe"; Parameters: """{app}\generate_config.py"" ""{app}"""; StatusMsg: "Initializing config..."; Flags: runhidden waituntilterminated

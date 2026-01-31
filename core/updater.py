@@ -20,6 +20,91 @@ PROXY_URL_PREFIX = "https://ghfast.top/"
 logger = get_logger()
 
 
+def download_file(url: str, destination: str, expected_checksum: str = None, progress_callback=None) -> bool:
+    """
+    通用文件下载函数
+    
+    Args:
+        url: 下载URL
+        destination: 目标文件路径
+        expected_checksum: 期望的SHA256校验和（可选）
+        progress_callback: 进度回调函数
+    
+    Returns:
+        是否下载成功
+    """
+    try:
+        logger.info(f"正在下载文件: {url}")
+        
+        # 尝试直接下载
+        def _progress_hook(block_num, block_size, total_size):
+            if progress_callback and total_size > 0:
+                progress = min(100, (block_num * block_size / total_size) * 100)
+                progress_callback(progress)
+        
+        # 尝试直接下载
+        req = urllib.request.Request(
+            url,
+            headers={'User-Agent': 'Capture_Push-Updater'}
+        )
+        
+        try:
+            urllib.request.urlretrieve(url, destination, _progress_hook)
+        except Exception as direct_error:
+            logger.warning(f"直接下载失败: {direct_error}")
+            
+            # 使用代理地址尝试下载
+            proxy_url = PROXY_URL_PREFIX + url
+            logger.info(f"尝试使用代理下载: {proxy_url}")
+            
+            try:
+                req_proxy = urllib.request.Request(
+                    proxy_url,
+                    headers={'User-Agent': 'Capture_Push-Updater'}
+                )
+                urllib.request.urlretrieve(proxy_url, destination, _progress_hook)
+                logger.info("代理下载成功")
+            except Exception as proxy_error:
+                logger.error(f"代理下载也失败: {proxy_error}")
+                return False
+        
+        # 验证文件完整性
+        if expected_checksum:
+            calculated_checksum = _calculate_file_hash(destination)
+            if calculated_checksum.lower() == expected_checksum.lower():
+                logger.info("文件完整性验证成功 - 校验和匹配")
+                return True
+            else:
+                logger.error(f"文件完整性验证失败! 期望校验和: {expected_checksum}, 实际校验和: {calculated_checksum}")
+                os.remove(destination)  # 删除可能被篡改的文件
+                return False
+        else:
+            logger.info("文件下载完成 - 未提供校验和进行验证")
+            return True
+            
+    except Exception as e:
+        logger.error(f"下载文件失败: {e}")
+        return False
+
+
+def _calculate_file_hash(filepath: str) -> str:
+    """
+    计算文件的SHA256哈希值
+    
+    Args:
+        filepath: 文件路径
+    
+    Returns:
+        文件的SHA256哈希值
+    """
+    hash_sha256 = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        # 分块读取文件，避免大文件占用过多内存
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_sha256.update(chunk)
+    return hash_sha256.hexdigest()
+
+
 class Updater:
     """软件更新管理器"""
     
@@ -436,7 +521,7 @@ class Updater:
                 
                 # 尝试从注册表获取安装路径
                 try:
-                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
                                         r"SOFTWARE\\Capture_Push", 
                                         0, 
                                         winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
@@ -474,16 +559,27 @@ class Updater:
         try:
             # 检查安装目录
             import winreg
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
-                                r"SOFTWARE\Capture_Push", 
-                                0, 
-                                winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
-            install_path, _ = winreg.QueryValueEx(key, "InstallPath")
-            winreg.CloseKey(key)
-            
+            # 首先尝试从HKCU读取，然后尝试HKLM
+            install_path = None
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                    r"SOFTWARE\\Capture_Push", 
+                                    0, 
+                                    winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                winreg.CloseKey(key)
+            except FileNotFoundError:
+                # 如果HKCU中没有找到，尝试从HKLM读取（兼容旧版本）
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                    r"SOFTWARE\\Capture_Push", 
+                                    0, 
+                                    winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                winreg.CloseKey(key)
+                    
             python_exe = Path(install_path) / ".venv" / "python.exe"
             return python_exe.exists()
-            
+                    
         except Exception:
             # 如果读取注册表失败，假设不存在
             return False
@@ -533,12 +629,23 @@ class Updater:
         try:
             # 获取安装目录
             import winreg
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
-                                r"SOFTWARE\Capture_Push", 
-                                0, 
-                                winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
-            install_path, _ = winreg.QueryValueEx(key, "InstallPath")
-            winreg.CloseKey(key)
+            # 首先尝试从HKCU读取，然后尝试HKLM
+            install_path = None
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                    r"SOFTWARE\\Capture_Push", 
+                                    0, 
+                                    winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                winreg.CloseKey(key)
+            except FileNotFoundError:
+                # 如果HKCU中没有找到，尝试从HKLM读取（兼容旧版本）
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                    r"SOFTWARE\\Capture_Push", 
+                                    0, 
+                                    winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                winreg.CloseKey(key)
             
             # 确定目标路径
             target_dir = Path(install_path)
@@ -582,12 +689,23 @@ class Updater:
         if not installer_path:
             try:
                 import winreg
-                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
-                                    r"SOFTWARE\Capture_Push", 
-                                    0, 
-                                    winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
-                install_path, _ = winreg.QueryValueEx(key, "InstallPath")
-                winreg.CloseKey(key)
+                # 首先尝试从HKCU读取，然后尝试HKLM
+                install_path = None
+                try:
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                                        r"SOFTWARE\\Capture_Push", 
+                                        0, 
+                                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                    install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                    winreg.CloseKey(key)
+                except FileNotFoundError:
+                    # 如果HKCU中没有找到，尝试从HKLM读取（兼容旧版本）
+                    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                        r"SOFTWARE\\Capture_Push", 
+                                        0, 
+                                        winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+                    install_path, _ = winreg.QueryValueEx(key, "InstallPath")
+                    winreg.CloseKey(key)
                 
                 # 尝试查找本地保存的安装包
                 install_dir = Path(install_path)

@@ -173,18 +173,13 @@ def get_config_path():
     
     Raises:
         RuntimeError: 如果无法获取 AppData 目录
-        FileNotFoundError: 如果配置文件不存在
     """
     # 获取 AppData 目录
     localappdata = os.environ.get('LOCALAPPDATA')
     if not localappdata:
         raise RuntimeError("无法获取 LOCALAPPDATA 环境变量")
-    
+
     config_path = Path(localappdata) / 'Capture_Push' / 'config.ini'
-    
-    # 配置文件必须存在
-    if not config_path.exists():
-        raise FileNotFoundError(f"配置文件不存在: {config_path}")
     
     return config_path
 

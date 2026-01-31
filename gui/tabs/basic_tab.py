@@ -1,63 +1,220 @@
-# gui/tabs/basic_tab.py
-from PySide6.QtWidgets import QVBoxLayout, QFormLayout, QComboBox, QLineEdit
-from .base_tab import BaseTab
-from ..widgets.collapsible_box import CollapsibleBox
+# -*- coding: utf-8 -*-
+"""
+基础设置标签页
+包含基本配置选项
+"""
 
-from core.school import get_available_schools
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, 
+    QLineEdit, QCheckBox, QPushButton, QLabel, 
+    QComboBox, QMessageBox
+)
+from PySide6.QtCore import Qt
+import os
+from core.log import get_logger
+from core.plugins.plugin_manager import get_plugin_manager
 
-class BasicTab(BaseTab):
+logger = get_logger()
+
+
+class BasicTab(QWidget):
+    """基础设置标签页类"""
+    
     def __init__(self, parent=None, config_manager=None):
-        super().__init__(parent, config_manager)
+        super().__init__(parent)
+        self.config_manager = config_manager
+        self.plugin_manager = get_plugin_manager()
         self.init_ui()
-
+        
     def init_ui(self):
+        """初始化UI"""
         layout = QVBoxLayout(self)
-        form = QFormLayout()
-
-        self.school_combo = QComboBox()
-        self.available_schools = get_available_schools()
-        for code, name in self.available_schools.items():
-            self.school_combo.addItem(name, code)
-        # 占位符处理在 load_config 中
-
-        self.username = QLineEdit()
-        self.password = QLineEdit()
-        self.password.setEchoMode(QLineEdit.Password)
-
-        form.addRow("选择院校", self.school_combo)
-        form.addRow("学号", self.username)
-        form.addRow("密码", self.password)
-
-        layout.addLayout(form)
-        layout.addStretch()
-
+        
+        # 院校和账户设置组
+        school_account_group = QGroupBox("院校与账户设置")
+        school_account_layout = QFormLayout(school_account_group)
+        
+        # 院校选择
+        self.school_selector_label = QLabel("选择院校:")
+        self.school_selector_combo = QComboBox()
+        self.school_selector_combo.setMinimumWidth(200)
+        
+        # 刷新插件按钮
+        self.refresh_plugins_btn = QPushButton("刷新院校列表")
+        self.refresh_plugins_btn.clicked.connect(self.refresh_available_plugins)
+        
+        # 院校选择布局
+        school_hbox = QHBoxLayout()
+        school_hbox.addWidget(self.school_selector_combo)
+        school_hbox.addWidget(self.refresh_plugins_btn)
+        school_hbox.addStretch()
+        
+        school_account_layout.addRow(self.school_selector_label, school_hbox)
+        
+        # 学号输入
+        self.student_id_input = QLineEdit()
+        self.student_id_input.setPlaceholderText("请输入学号")
+        school_account_layout.addRow("学号:", self.student_id_input)
+        
+        # 密码输入
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("请输入密码")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        school_account_layout.addRow("密码:", self.password_input)
+        
+        # 提示标签
+        self.plugin_hint_label = QLabel("提示: 如果列表中没有您需要的院校，请前往插件管理页面下载相应插件")
+        self.plugin_hint_label.setWordWrap(True)
+        self.plugin_hint_label.setStyleSheet("color: #0066cc; font-style: italic;")
+        school_account_layout.addRow(self.plugin_hint_label)
+        
+        # 配置按钮布局
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.save_config_btn = QPushButton("保存配置")
+        self.save_config_btn.clicked.connect(self.save_config)
+        btn_layout.addWidget(self.save_config_btn)
+        
+        self.load_config_btn = QPushButton("加载配置")
+        self.load_config_btn.clicked.connect(self.load_config)
+        btn_layout.addWidget(self.load_config_btn)
+        
+        # 主布局
+        layout.addWidget(school_account_group)
+        layout.addLayout(btn_layout)
+        
+        # 加载初始配置
+        self.load_config()
+        # 刷新院校列表
+        self.refresh_available_plugins()
+    
+    def refresh_available_plugins(self):
+        """刷新可用插件列表"""
+        try:
+            available_plugins = self.plugin_manager.get_available_plugins()
+            
+            # 保存当前选择
+            current_text = self.school_selector_combo.currentText()
+            
+            self.school_selector_combo.clear()
+            for code, name in available_plugins.items():
+                self.school_selector_combo.addItem(f"{code} - {name}", code)
+            
+            # 尝試恢復之前的選項
+            index = self.school_selector_combo.findText(current_text)
+            if index >= 0:
+                self.school_selector_combo.setCurrentIndex(index)
+            
+            logger.info(f"刷新可用插件列表，共找到 {len(available_plugins)} 个插件")
+        except Exception as e:
+            logger.error(f"刷新可用插件列表失败: {e}", exc_info=True)
+            QMessageBox.critical(self, "错误", f"刷新可用插件列表失败: {str(e)}")
+    
     def load_config(self):
-        # 加载学校代码
-        saved_school_code = self.config_manager.get("account", "school_code", fallback="")
-        
-        # 如果已保存学校代码且不是占位符，则设置为该学校
-        if saved_school_code and saved_school_code != "12345":
-            saved_index = self.school_combo.findData(saved_school_code)
-            if saved_index >= 0:
-                self.school_combo.setCurrentIndex(saved_index)
+        """加载配置"""
+        if self.config_manager:
+            # 检查是否是ConfigParser实例
+            if hasattr(self.config_manager, 'get'):
+                config = self.config_manager
+                # 加载学号
+                try:
+                    student_id = config.get('account', 'username', fallback='')
+                    self.student_id_input.setText(student_id)
+                except:
+                    pass
+                
+                # 加载密码
+                try:
+                    password = config.get('account', 'password', fallback='')
+                    self.password_input.setText(password)
+                except:
+                    pass
+                
+                # 加载学校代码
+                try:
+                    school_code = config.get('account', 'school_code', fallback='')
+                    index = self.school_selector_combo.findData(school_code)
+                    if index >= 0:
+                        self.school_selector_combo.setCurrentIndex(index)
+                except:
+                    pass
             else:
-                # 如果保存的学校代码不存在于列表中，则显示占位符
-                placeholder_index = self.school_combo.findData("12345")
-                if placeholder_index >= 0:
-                    self.school_combo.setCurrentIndex(placeholder_index)
-        else:
-            # 否则显示占位符
-            placeholder_index = self.school_combo.findData("12345")
-            if placeholder_index >= 0:
-                self.school_combo.setCurrentIndex(placeholder_index)
-        
-        # 加载其他账户信息
-        self.username.setText(self.config_manager.get("account", "username", fallback=""))
-        self.password.setText(self.config_manager.get("account", "password", fallback=""))
-
+                # 如果是字典类型的配置
+                config = self.config_manager if isinstance(self.config_manager, dict) else {}
+                
+                # 加载学号
+                student_id = config.get('account', {}).get('username', '')
+                self.student_id_input.setText(student_id)
+                
+                # 加载密码
+                password = config.get('account', {}).get('password', '')
+                self.password_input.setText(password)
+                
+                # 加载学校代码
+                school_code = config.get('account', {}).get('school_code', '')
+                index = self.school_selector_combo.findData(school_code)
+                if index >= 0:
+                    self.school_selector_combo.setCurrentIndex(index)
+            
+            logger.info("配置加载完成")
+    
     def save_config(self):
-        if "account" not in self.config_manager:
-            self.config_manager["account"] = {}
-        self.config_manager["account"]["school_code"] = self.school_combo.currentData()
-        self.config_manager["account"]["username"] = self.username.text()
-        self.config_manager["account"]["password"] = self.password.text()
+        """保存配置"""
+        if self.config_manager:
+            # 检查是否是ConfigParser实例
+            if hasattr(self.config_manager, 'set'):
+                config = self.config_manager
+                # 确保存在所需的section
+                if not config.has_section('account'):
+                    config.add_section('account')
+                
+                # 保存学号
+                config.set('account', 'username', self.student_id_input.text())
+                
+                # 保存密码
+                config.set('account', 'password', self.password_input.text())
+                
+                # 保存学校代码
+                school_code = self.school_selector_combo.currentData()
+                if school_code:
+                    config.set('account', 'school_code', school_code)
+                
+                try:
+                    # 保存到配置文件
+                    from core.config_manager import save_config
+                    save_config(config)
+                    QMessageBox.information(self, "提示", "配置保存成功")
+                    logger.info("配置保存成功")
+                except Exception as e:
+                    logger.error(f"保存配置失败: {e}", exc_info=True)
+                    QMessageBox.critical(self, "错误", f"保存配置失败: {str(e)}")
+            else:
+                # 如果是字典类型的配置
+                config_dict = self.config_manager if isinstance(self.config_manager, dict) else {}
+                
+                # 初始化嵌套字典
+                if 'account' not in config_dict:
+                    config_dict['account'] = {}
+                
+                # 保存学号
+                config_dict['account']['username'] = self.student_id_input.text()
+                
+                # 保存密码
+                config_dict['account']['password'] = self.password_input.text()
+                
+                # 保存学校代码
+                school_code = self.school_selector_combo.currentData()
+                if school_code:
+                    config_dict['account']['school_code'] = school_code
+                
+                try:
+                    from core.config_manager import save_config
+                    save_config(config_dict)
+                    QMessageBox.information(self, "提示", "配置保存成功")
+                    logger.info("配置保存成功")
+                except Exception as e:
+                    logger.error(f"保存配置失败: {e}", exc_info=True)
+                    QMessageBox.critical(self, "错误", f"保存配置失败: {str(e)}")
+        else:
+            QMessageBox.warning(self, "警告", "配置管理器未初始化")

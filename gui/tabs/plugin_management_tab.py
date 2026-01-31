@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QThread, Signal
 import logging
-from core.plugins.school_plugin_manager import get_plugin_manager
+from core.plugins.plugin_manager import get_plugin_manager
 
 logger = logging.getLogger(__name__)
 

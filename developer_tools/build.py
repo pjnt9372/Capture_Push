@@ -188,40 +188,47 @@ def main():
     core_dst = build_dir / "core"
     core_dst.mkdir(parents=True, exist_ok=True)
     
-    # 复制 core 目录下的基础文件
+    # 复制 core 目录下的所有内容（文件和目录）
     core_src = project_root / "core"
     for item in core_src.iterdir():
-        if item.is_file():  # 只复制基础文件，不包括 school 和 plugins 目录
-            if item.name not in ["school", "plugins"]:
-                shutil.copy2(item, core_dst / item.name)
+        if item.is_file():
+            # 复制 core 目录下的所有文件
+            shutil.copy2(item, core_dst / item.name)
+        elif item.is_dir():
+            # 复制 core 目录下的所有子目录
+            item_dst = core_dst / item.name
+            if item.name == "plugins":
+                # 对 plugins 目录特殊处理，只复制框架和示例插件
+                if item_dst.exists():
+                    shutil.rmtree(item_dst)
+                item_dst.mkdir(parents=True, exist_ok=True)
+                
+                # 复制插件目录的基础文件
+                for sub_item in item.iterdir():
+                    if sub_item.is_file():  # 复制基础文件，如 __init__.py 和 plugin_manager.py
+                        shutil.copy2(sub_item, item_dst / sub_item.name)
+                    elif sub_item.is_dir() and sub_item.name in ["12345"]:  # 只复制示例插件目录
+                        copy_tree(sub_item, item_dst / sub_item.name)
+                        log(f"已复制示例插件目录: {sub_item.name}")
+                    else:
+                        log(f"跳过非示例插件目录: {sub_item.name}")
+                
+                log(f"已复制插件系统目录（仅示例插件）")
+            else:
+                # 复制其他所有子目录（如 senders, utils 等）
+                copy_tree(item, item_dst)
+                log(f"已复制 core 子目录: {item.name}")
     
-    # 只复制 school/12345 目录（示例学校）
-    school_12345_src = core_src / "school" / "12345"
-    if school_12345_src.exists():
-        school_dst = core_dst / "school"
-        school_dst.mkdir(exist_ok=True)
-        school_12345_dst = school_dst / "12345"
-        copy_tree(school_12345_src, school_12345_dst)
-        log(f"已复制示例学校目录: 12345")
-    
+    # 注意：其他学校插件将通过插件管理器在线下载，不在主程序中包含
 
-    
-    # 只复制 plugins/school/12345 目录（示例学校插件）
-    plugins_school_12345_src = core_src / "plugins" / "school" / "12345"
-    if plugins_school_12345_src.exists():
-        plugins_dst = core_dst / "plugins" / "school"
-        plugins_dst.mkdir(parents=True, exist_ok=True)
-        plugins_12345_dst = plugins_dst / "12345"
-        copy_tree(plugins_school_12345_src, plugins_12345_dst)
-        log(f"已复制示例学校插件目录: 12345")
-        
 
-    
+    # 复制其他目录
     copy_tree(project_root / "gui", build_dir / "gui")
     copy_tree(project_root / "resources", build_dir / "resources")
+    copy_tree(project_root / "tray", build_dir / "tray")  # 复制tray目录
     
     # 复制必要文件到 build 根目录
-    files_to_copy = ["VERSION", "config.ini", "generate_config.py", "Capture_Push_Setup.iss", "Capture_Push_Lite_Setup.iss", "ChineseSimplified.isl"]
+    files_to_copy = ["VERSION", "config.ini", "generate_config.py", "Capture_Push_Setup.iss", "Capture_Push_Lite_Setup.iss", "ChineseSimplified.isl", "pyproject.toml", "uv.lock"]
     for f_name in files_to_copy:
         src_f = project_root / f_name
         if src_f.exists():

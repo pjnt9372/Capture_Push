@@ -33,12 +33,12 @@ Python脚本: {install_dir}\\core
 
 [注册表项]
 程序路径注册:
-  位置: HKLM\\SOFTWARE\\Capture_Push
+  位置: HKCU\SOFTWARE\Capture_Push
   键名: InstallPath
   键值: {install_dir}
 
 自启动托盘程序:
-  位置: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+  位置: HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
   键名: Capture_Push_Tray
   键值: {install_dir}\Capture_Push_tray.exe
 
@@ -59,8 +59,8 @@ Pip: {install_dir}\\.venv\\Scripts\\pip.exe
 1. 运行卸载程序: {install_dir}\\unins000.exe
 2. 或手动删除整个安装目录
 3. 清理注册表项（可选）:
-   - 删除 HKLM\SOFTWARE\Capture_Push
-   - 删除 HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\Capture_Push_Tray
+   - 删除 HKCU\SOFTWARE\Capture_Push
+   - 删除 HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\Capture_Push_Tray
 
 ========================================
 注意事项

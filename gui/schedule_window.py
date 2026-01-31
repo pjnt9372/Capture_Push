@@ -1,559 +1,357 @@
+# -*- coding: utf-8 -*-
+"""
+课表窗口模块
+显示课表信息的GUI窗口
+"""
+
 import sys
-import json
-import subprocess
-import configparser
-from pathlib import Path
+from typing import Dict, Any, Optional
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, 
-    QHeaderView, QHBoxLayout, QPushButton, QMessageBox, 
-    QApplication, QLabel, QSpinBox
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
+    QTableWidgetItem, QPushButton, QLabel, QLineEdit, QComboBox, 
+    QFileDialog, QMessageBox, QHeaderView, QProgressBar
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QFont
+import json
+import csv
+from pathlib import Path
 
-# 导入日志模块
-try:
-    from log import init_logger
-except ImportError:
-    from core.log import init_logger
+# 添加项目根目录到模块搜索路径
+import os
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-# 初始化日志记录器
-logger = init_logger("schedule_window")
+from core.log import get_logger
+from core.push import PushManager
+from core.plugins.plugin_manager import get_plugin_manager
 
-# 动态获取基础目录和配置路径
-BASE_DIR = Path(__file__).resolve().parent.parent
-try:
-    from log import get_config_path, get_log_file_path
-    from config_manager import load_config
-except ImportError:
-    from core.log import get_config_path, get_log_file_path
-    from core.config_manager import load_config
+logger = get_logger()
 
-try:
-    from school import get_school_module
-except ImportError:
-    from core.school import get_school_module
 
-# 导入自定义组件和对话框
-try:
-    from . import custom_widgets, dialogs
-    CourseBlock = custom_widgets.CourseBlock
-    CourseEditDialog = dialogs.CourseEditDialog
-except ImportError:
-    # 作为独立脚本运行时
-    from custom_widgets import CourseBlock
-    from dialogs import CourseEditDialog
+class ScheduleCaptureWorker(QThread):
+    """课表抓取工作线程"""
+    finished = Signal(bool, str, dict)  # 成功标志、消息、数据
+    progress = Signal(int, str)  # 进度百分比、状态信息
 
-CONFIG_FILE = str(get_config_path())
-APPDATA_DIR = get_log_file_path('gui').parent
-MANUAL_SCHEDULE_FILE = APPDATA_DIR / "manual_schedule.json"
-
-def get_current_school_code():
-    """从配置文件中获取当前院校代码"""
-    cfg = load_config()
-    return cfg.get("account", "school_code", fallback="10546")
-
-class ScheduleViewerWindow(QWidget):
-    """独立窗口：查看课表（色块展示版，支持周次切换）"""
-    def __init__(self):
+    def __init__(self, school_code: str, username: str, password: str, force_update: bool = False):
         super().__init__()
-        self.setWindowTitle("Capture_Push · 课表查看")
-        self.resize(1100, 850)
-        
-        # 设置窗口图标
+        self.school_code = school_code
+        self.username = username
+        self.password = password
+        self.force_update = force_update
+
+    def run(self):
         try:
-            import sys
+            self.progress.emit(10, "正在加载插件...")
             
-            icon_path = None
+            # 获取插件管理器
+            plugin_manager = get_plugin_manager()
             
-            # 尝试多种可能的路径
-            possible_paths = [
-                BASE_DIR / "resources" / "app_icon.ico",  # 开发环境路径
-                Path(sys.prefix) / "resources" / "app_icon.ico",  # 安装环境路径
-                Path.cwd() / "resources" / "app_icon.ico",  # 当前工作目录
-                Path(sys.executable).parent / "resources" / "app_icon.ico"  # 可执行文件所在目录
-            ]
+            # 加载指定院校的插件
+            school_module = plugin_manager.load_plugin(self.school_code)
+            if not school_module:
+                self.finished.emit(False, f"未能加载院校 {self.school_code} 的插件", {})
+                return
             
-            for path in possible_paths:
-                if path.exists():
-                    icon_path = path
-                    break
+            self.progress.emit(30, "正在抓取课表信息...")
             
-            if icon_path:
-                self.setWindowIcon(QIcon(str(icon_path)))
+            # 调用插件的fetch_course_schedule函数
+            schedule_data = school_module.fetch_course_schedule(self.username, self.password, self.force_update)
+            
+            if schedule_data:
+                self.progress.emit(90, "处理完成")
+                self.finished.emit(True, "课表抓取成功", schedule_data)
+            else:
+                self.finished.emit(False, "未能获取课表数据", {})
                 
-                # 在Windows上额外确保任务栏图标正确显示
-                if sys.platform == "win32":
-                    try:
-                        # 使用ctypes设置应用程序组ID，这有助于Windows识别任务栏图标
-                        myappid = 'Capture_Push.GUI.1'
-                        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-                    except Exception as e:
-                        print(f"无法设置Windows AppUserModelID: {e}")
         except Exception as e:
-            print(f"无法设置课表窗口图标: {e}")
+            logger.error(f"课表抓取失败: {e}", exc_info=True)
+            self.finished.emit(False, f"课表抓取失败: {str(e)}", {})
+
+
+class ScheduleWindow(QMainWindow):
+    """课表窗口类"""
+    
+    def __init__(self, config_manager=None):
+        super().__init__()
+        self.config_manager = config_manager
+        self.plugin_manager = get_plugin_manager()
+        self.schedule_data = None
+        self.init_ui()
         
-        # 预设更柔和的浅色列表，适合黑色文字
-        self.colors = [
-            "#FFD1D1", "#FFDFD1", "#FFF0D1", "#E6FAD1", 
-            "#D1FAE5", "#D1F2FA", "#D1D5FA", "#E9D1FA",
-            "#FAD1F5", "#FAD1D1", "#F5F5F5", "#EEEEEE"
-        ]
-        self.course_colors = {}
+    def init_ui(self):
+        """初始化UI"""
+        self.setWindowTitle('课表查看')
+        self.setGeometry(100, 100, 1200, 800)
+        
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
+        
+        # 控制面板
+        control_layout = QHBoxLayout()
+        
+        self.school_code_label = QLabel('院校代码:')
+        self.school_code_combo = QComboBox()
+        self.school_code_combo.setEditable(True)
+        
+        self.username_label = QLabel('用户名:')
+        self.username_input = QLineEdit()
+        
+        self.password_label = QLabel('密码:')
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        
+        self.force_update_checkbox = QPushButton('强制更新')
+        self.force_update_checkbox.setCheckable(True)
+        
+        self.capture_btn = QPushButton('抓取课表')
+        self.capture_btn.clicked.connect(self.capture_schedule)
+        
+        self.export_btn = QPushButton('导出课表')
+        self.export_btn.clicked.connect(self.export_schedule)
+        
+        self.push_btn = QPushButton('推送课表')
+        self.push_btn.clicked.connect(self.push_schedule)
+        
+        control_layout.addWidget(self.school_code_label)
+        control_layout.addWidget(self.school_code_combo)
+        control_layout.addWidget(self.username_label)
+        control_layout.addWidget(self.username_input)
+        control_layout.addWidget(self.password_label)
+        control_layout.addWidget(self.password_input)
+        control_layout.addWidget(self.force_update_checkbox)
+        control_layout.addWidget(self.capture_btn)
+        control_layout.addWidget(self.export_btn)
+        control_layout.addWidget(self.push_btn)
+        control_layout.addStretch()
+        
+        layout.addLayout(control_layout)
+        
+        # 进度条
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
+        
+        # 状态栏
+        self.status_label = QLabel('就绪')
+        layout.addWidget(self.status_label)
+        
+        # 课表表格
+        self.schedule_table = QTableWidget()
+        self.schedule_table.setColumnCount(7)  # 课程名称、教师、教室、星期、节次、周次、学期
+        self.schedule_table.setHorizontalHeaderLabels(['课程名称', '教师', '教室', '星期', '节次', '周次', '学期'])
+        
+        # 设置表格列宽
+        header = self.schedule_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # 课程名称占最大空间
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 教师
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 教室
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # 星期
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 节次
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 周次
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 学期
+        
+        layout.addWidget(self.schedule_table)
         
         # 加载配置
-        self.cfg = load_config()
-        self.first_monday_str = self.cfg.get("semester", "first_monday", fallback="")
+        self.load_config()
         
-        # 加载学校时间设置
-        self.morning_count = self.cfg.getint("school_time", "morning_count", fallback=4)
-        self.afternoon_count = self.cfg.getint("school_time", "afternoon_count", fallback=4)
-        self.evening_count = self.cfg.getint("school_time", "evening_count", fallback=2)
-        self.total_classes = self.morning_count + self.afternoon_count + self.evening_count
+        # 连接信号
+        self.capture_btn.clicked.connect(self.capture_schedule)
+        self.export_btn.clicked.connect(self.export_schedule)
+        self.push_btn.clicked.connect(self.push_schedule)
         
-        class_times_str = self.cfg.get("school_time", "class_times", fallback="")
-        self.class_times = []
-        if class_times_str:
-            self.class_times = [t.strip() for t in class_times_str.split(",")]
-        # 补齐
-        while len(self.class_times) < self.total_classes:
-            self.class_times.append("")
-        
-        self.current_week = self.calculate_current_week()
-        self.selected_week = self.current_week
-        
-        self.init_ui()
-
-    def calculate_current_week(self):
-        """根据第一周周一反推当前是第几周"""
-        if not self.first_monday_str:
-            return 1
-        try:
-            import datetime
-            first_monday = datetime.datetime.strptime(self.first_monday_str, "%Y-%m-%d").date()
-            today = datetime.date.today()
-            delta = (today - first_monday).days
-            if delta < 0: return 1
-            week = (delta // 7) + 1
-            return min(max(week, 1), 20) # 限制在 1-20 周
-        except:
-            return 1
-
-    def get_color(self, course_name):
-        """为课程名分配固定颜色"""
-        if course_name not in self.course_colors:
-            color_idx = len(self.course_colors) % len(self.colors)
-            self.course_colors[course_name] = self.colors[color_idx]
-        return self.course_colors[course_name]
-
-    def adjust_color_brightness(self, hex_color, factor):
-        """调整颜色亮度，factor为正数变亮，负数变暗"""
-        # 移除 # 符号
-        hex_color = hex_color.lstrip('#')
-        # 解析RGB值
-        try:
-            rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    def load_config(self):
+        """加载配置"""
+        if self.config_manager:
+            config = self.config_manager.get_config()
+            # 加载常用院校代码
+            recent_schools = config.get('recent_schools', [])
+            self.school_code_combo.addItems(recent_schools)
             
-            # 调整每个颜色通道
-            adjusted_rgb = []
-            for val in rgb:
-                new_val = val + factor
-                # 确保值在0-255范围内
-                new_val = max(0, min(255, new_val))
-                adjusted_rgb.append(new_val)
+            # 加载最近使用的用户名
+            recent_username = config.get('recent_username', '')
+            self.username_input.setText(recent_username)
+    
+    def save_config(self):
+        """保存配置"""
+        if self.config_manager:
+            config = self.config_manager.get_config()
             
-            # 转换回十六进制
-            return '#{0:02x}{1:02x}{2:02x}'.format(*adjusted_rgb)
-        except:
-            # 如果转换失败，返回原始颜色
-            return hex_color
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        # 顶部控制栏
-        top_ctrl = QHBoxLayout()
-        
-        # 周次切换
-        top_ctrl.addWidget(QLabel("当前显示："))
-        self.week_combo = QSpinBox()
-        self.week_combo.setRange(1, 25) # 稍微扩大范围
-        self.week_combo.setValue(self.selected_week)
-        self.week_combo.setPrefix("第 ")
-        self.week_combo.setSuffix(" 周")
-        self.week_combo.valueChanged.connect(self.on_week_changed)
-        top_ctrl.addWidget(self.week_combo)
-        
-        self.this_week_label = QLabel("")
-        self.this_week_label.setStyleSheet("color: #0078d4; font-weight: bold;")
-        top_ctrl.addWidget(self.this_week_label)
-        self.update_this_week_label()
+            # 保存最近使用的院校代码
+            school_code = self.school_code_combo.currentText()
+            recent_schools = config.get('recent_schools', [])
+            if school_code not in recent_schools:
+                recent_schools.insert(0, school_code)
+                # 只保留最近的10个院校代码
+                recent_schools = recent_schools[:10]
+            config['recent_schools'] = recent_schools
             
-        top_ctrl.addStretch()
-        top_ctrl.addWidget(QLabel("提示：双击单元格进行手动编辑"))
-        layout.addLayout(top_ctrl)
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(8) # 1列节次 + 7列星期
-        self.table.setRowCount(self.total_classes)
+            # 保存最近使用的用户名
+            config['recent_username'] = self.username_input.text()
+            
+            self.config_manager.save_config(config)
+    
+    def capture_schedule(self):
+        """抓取课表"""
+        school_code = self.school_code_combo.currentText().strip()
+        username = self.username_input.text().strip()
+        password = self.password_input.text().strip()
+        force_update = self.force_update_checkbox.isChecked()
         
-        days = ["时间/节次", "周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        self.table.setHorizontalHeaderLabels(days)
-        
-        # 设置表头样式
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.Stretch)
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self.table.setColumnWidth(0, 100) # 加宽时间列
-        
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionMode(QTableWidget.NoSelection)
-        self.table.setShowGrid(False) # 隐藏网格线
-        
-        # 绑定双击事件
-        self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
-
-        # 初始化节次列 (现在包含时间)
-        self.update_time_column()
-
-        layout.addWidget(self.table)
-        
-        # 底部按钮区（添加刷新和清除）
-        bottom_layout = QHBoxLayout()
-        
-        refresh_btn = QPushButton("刷新课表 (从网络获取)")
-        refresh_btn.setStyleSheet("background-color: #0078d4; color: white; font-weight: bold;")
-        refresh_btn.clicked.connect(self.refresh_data)
-        
-        clear_btn = QPushButton("清除课表数据 (含手动修改)")
-        clear_btn.setStyleSheet("color: #d83b01; font-weight: bold;")
-        clear_btn.clicked.connect(self.clear_schedule_cache)
-        
-        bottom_layout.addWidget(refresh_btn)
-        bottom_layout.addStretch()
-        bottom_layout.addWidget(clear_btn)
-        layout.addLayout(bottom_layout)
-
-        self.load_data()
-
-    def on_week_changed(self, value):
-        self.selected_week = value
-        self.update_this_week_label()
-        self.load_data()
-
-    def update_this_week_label(self):
-        """更新本周标识标签"""
-        if self.selected_week == self.current_week:
-            self.this_week_label.setText("(本周)")
-        else:
-            self.this_week_label.setText(f"(本周是第 {self.current_week} 周)")
-
-    def update_time_column(self):
-        for i in range(self.total_classes):
-            time_str = self.class_times[i] if i < len(self.class_times) else ""
-            text = f"{time_str}\n(第 {i+1} 节)"
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignCenter)
-            item.setBackground(QColor("#f8f9fa"))
-            self.table.setItem(i, 0, item)
-            self.table.setRowHeight(i, 75)
-
-    def on_cell_double_clicked(self, row, col):
-        """双击单元格打开编辑对话框"""
-        if col == 0:
-            # 编辑时间
-            from PySide6.QtWidgets import QInputDialog
-            current_time = self.class_times[row] if row < len(self.class_times) else ""
-            new_time, ok = QInputDialog.getText(self, "修改时间", f"请输入第 {row+1} 节课的开始时间:", text=current_time)
-            if ok:
-                if row < len(self.class_times):
-                    self.class_times[row] = new_time
-                else:
-                    while len(self.class_times) <= row:
-                        self.class_times.append("")
-                    self.class_times[row] = new_time
-                
-                # 保存到配置
-                if "school_time" not in self.cfg: self.cfg["school_time"] = {}
-                self.cfg["school_time"]["class_times"] = ",".join(self.class_times)
-                try:
-                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                        self.cfg.write(f)
-                except:
-                    pass
-                
-                self.update_time_column()
+        if not school_code or not username or not password:
+            QMessageBox.warning(self, '警告', '请填写完整的院校代码、用户名和密码')
             return
         
-        # 尝试获取当前格子已有的数据
-        existing_data = {}
-        # 检查是否是手动修改过的格子
-        manual_key = f"{col}-{row+1}"
-        manual_data = self.load_manual_schedule()
-        if manual_key in manual_data:
-            existing_data = manual_data[manual_key]
+        # 保存配置
+        self.save_config()
+        
+        # 创建并启动工作线程
+        self.worker = ScheduleCaptureWorker(school_code, username, password, force_update)
+        self.worker.finished.connect(self.on_capture_finished)
+        self.worker.progress.connect(self.on_progress_update)
+        
+        # 显示进度条
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.capture_btn.setEnabled(False)
+        
+        self.worker.start()
+        
+    def on_progress_update(self, progress: int, status: str):
+        """更新进度"""
+        self.progress_bar.setValue(progress)
+        self.status_label.setText(status)
+        
+    def on_capture_finished(self, success: bool, message: str, data: dict):
+        """抓取完成回调"""
+        # 隐藏进度条
+        self.progress_bar.setVisible(False)
+        self.capture_btn.setEnabled(True)
+        
+        if success:
+            self.schedule_data = data
+            self.display_schedule(data)
+            self.status_label.setText(f'课表抓取成功 - 共{len(data.get("schedule", []))}门课程')
+            QMessageBox.information(self, '成功', message)
         else:
-            # 如果没有手动修改过，尝试查找自动解析的课程数据
-            schedule_html_file = APPDATA_DIR / "schedule.html"
-            if schedule_html_file.exists():
-                with open(schedule_html_file, "r", encoding="utf-8") as f:
-                    html = f.read()
-                
-                school_code = get_current_school_code()
-                school_mod = get_school_module(school_code)
-                if school_mod:
-                    parsed_schedule = school_mod.parse_schedule(html)
-                    # 查找对应位置的自动解析课程
-                    for s in parsed_schedule:
-                        day_idx = s.get("星期", 0)
-                        start = s.get("开始小节", 0)
-                        
-                        if day_idx == col and start == (row + 1):
-                            # 找到匹配的自动解析课程
-                            existing_data = {
-                                "课程名称": s.get("课程名称", ""),
-                                "教室": s.get("教室", ""),
-                                "教师": s.get("教师", ""),
-                                "上课周次": self.format_weeks_list(s.get("周次列表", [])),
-                                "row_span": s.get("结束小节", start) - start + 1
-                            }
-                            break
-        
-        self.current_editing_pos = (row, col)
-        self.edit_dialog = CourseEditDialog(self, existing_data)
-        self.edit_dialog.show()
-        
-    def format_weeks_list(self, weeks_list):
-        """将周次列表格式化为字符串"""
-        if not weeks_list or "全学期" in weeks_list:
-            return "1-20"
-        
-        if not weeks_list:
-            return "1-20"
+            self.status_label.setText('课表抓取失败')
+            QMessageBox.critical(self, '错误', message)
+    
+    def display_schedule(self, schedule_data: dict):
+        """显示课表数据"""
+        if not schedule_data or 'schedule' not in schedule_data:
+            return
             
-        # 尝试将连续数字合并为范围，如 [1,2,3,5,7,8,9] -> "1-3,5,7-9"
-        if len(weeks_list) == 1:
-            return str(weeks_list[0])
+        schedule = schedule_data['schedule']
+        self.schedule_table.setRowCount(len(schedule))
         
-        # 排序
-        weeks_list = sorted(set(weeks_list))
+        # 星期映射
+        weekday_map = {
+            1: '星期一', 2: '星期二', 3: '星期三', 4: '星期四', 
+            5: '星期五', 6: '星期六', 7: '星期日'
+        }
         
-        result = []
-        i = 0
-        while i < len(weeks_list):
-            start = weeks_list[i]
-            end = start
+        for row, course in enumerate(schedule):
+            # 课程名称
+            course_name_item = QTableWidgetItem(course.get('course_name', ''))
+            self.schedule_table.setItem(row, 0, course_name_item)
             
-            # 查找连续序列
-            while i + 1 < len(weeks_list) and weeks_list[i + 1] == end + 1:
-                end = weeks_list[i + 1]
-                i += 1
+            # 教师
+            teacher_item = QTableWidgetItem(course.get('teacher', ''))
+            self.schedule_table.setItem(row, 1, teacher_item)
             
-            if start == end:
-                result.append(str(start))
+            # 教室
+            classroom_item = QTableWidgetItem(course.get('classroom', ''))
+            self.schedule_table.setItem(row, 2, classroom_item)
+            
+            # 星期
+            week_day = course.get('week_day', 0)
+            weekday_item = QTableWidgetItem(weekday_map.get(week_day, f'星期{week_day}'))
+            weekday_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.schedule_table.setItem(row, 3, weekday_item)
+            
+            # 节次
+            period_start = course.get('period_start', '')
+            period_end = course.get('period_end', '')
+            if period_start == period_end:
+                period_item = QTableWidgetItem(f'第{period_start}节')
             else:
-                result.append(f"{start}-{end}")
+                period_item = QTableWidgetItem(f'第{period_start}-{period_end}节')
+            period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.schedule_table.setItem(row, 4, period_item)
             
-            i += 1
-        
-        return ','.join(result)
-
-    def on_dialog_finished(self, result):
-        """对话框保存后的回调"""
-        row, col = self.current_editing_pos
-        manual_key = f"{col}-{row+1}" # 星期-开始小节
-        
-        manual_data = self.load_manual_schedule()
-        if not result.get("课程名称"):
-            # 如果名称为空，视为删除该位置的手动修改
-            if manual_key in manual_data:
-                del manual_data[manual_key]
-        else:
-            manual_data[manual_key] = result
+            # 周次
+            weeks_item = QTableWidgetItem(course.get('weeks', ''))
+            self.schedule_table.setItem(row, 5, weeks_item)
             
-        self.save_manual_schedule(manual_data)
-        self.load_data() # 重新渲染
-
-    def load_manual_schedule(self):
-        """加载手动修改的课表数据"""
-        if not MANUAL_SCHEDULE_FILE.exists():
-            return {}
-        try:
-            with open(MANUAL_SCHEDULE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
-
-    def save_manual_schedule(self, data):
-        """保存手动修改的课表数据"""
-        try:
-            with open(MANUAL_SCHEDULE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            QMessageBox.critical(self, "保存失败", f"无法保存手动修改：{e}")
-
-    def clear_schedule_cache(self):
-        """清除课表缓存"""
-        reply = QMessageBox.question(self, "确认清除", "确定要清除所有课表缓存（包括手动修改的数据）吗？", 
-                                   QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                schedule_html = APPDATA_DIR / "schedule.html"
-                if schedule_html.exists(): schedule_html.unlink()
-                if MANUAL_SCHEDULE_FILE.exists(): MANUAL_SCHEDULE_FILE.unlink()
-                QMessageBox.information(self, "成功", "课表数据已清除。")
-                self.load_data()
-            except Exception as e:
-                QMessageBox.critical(self, "失败", f"清除失败：{e}")
-
-    def refresh_data(self):
-        """手动触发网络刷新"""
-        # 禁用按钮防止重复点击
-        sender = self.sender()
-        if sender: sender.setEnabled(False)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+            # 学期
+            semester_item = QTableWidgetItem(course.get('semester', ''))
+            self.schedule_table.setItem(row, 6, semester_item)
+    
+    def export_schedule(self):
+        """导出课表"""
+        if not self.schedule_data:
+            QMessageBox.warning(self, '警告', '没有可导出的课表数据')
+            return
+            
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, '导出课表', '', 'CSV文件 (*.csv);;JSON文件 (*.json);;所有文件 (*)'
+        )
         
+        if not file_path:
+            return
+            
         try:
-            exe_dir = Path(sys.executable).parent
-            if (exe_dir / "pythonw.exe").exists():
-                py_exe = str(exe_dir / "pythonw.exe")
+            if file_path.endswith('.csv'):
+                # 导出为CSV
+                with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                    fieldnames = ['course_name', 'teacher', 'classroom', 'week_day', 'period_start', 'period_end', 'weeks', 'semester']
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    
+                    writer.writeheader()
+                    for course in self.schedule_data.get('schedule', []):
+                        writer.writerow({
+                            'course_name': course.get('course_name', ''),
+                            'teacher': course.get('teacher', ''),
+                            'classroom': course.get('classroom', ''),
+                            'week_day': course.get('week_day', ''),
+                            'period_start': course.get('period_start', ''),
+                            'period_end': course.get('period_end', ''),
+                            'weeks': course.get('weeks', ''),
+                            'semester': course.get('semester', '')
+                        })
+            elif file_path.endswith('.json'):
+                # 导出为JSON
+                with open(file_path, 'w', encoding='utf-8') as jsonfile:
+                    json.dump(self.schedule_data, jsonfile, ensure_ascii=False, indent=2)
             else:
-                py_exe = sys.executable
-                
-            go_script = str(BASE_DIR / "core" / "go.py")
+                # 默认导出为JSON
+                with open(file_path + '.json', 'w', encoding='utf-8') as jsonfile:
+                    json.dump(self.schedule_data, jsonfile, ensure_ascii=False, indent=2)
             
-            CREATE_NO_WINDOW = 0x08000000
-            subprocess.Popen([py_exe, go_script, "--fetch-schedule", "--force"], 
-                            creationflags=CREATE_NO_WINDOW).wait()
-            
-            self.load_data()
-            QMessageBox.information(self, "刷新完成", "课表数据已从网络同步。")
+            QMessageBox.information(self, '成功', f'课表已导出到: {file_path}')
         except Exception as e:
-            QMessageBox.critical(self, "刷新失败", f"无法执行刷新脚本：{e}")
-        finally:
-            QApplication.restoreOverrideCursor()
-            if sender: sender.setEnabled(True)
-
-    def load_data(self):
+            logger.error(f"导出课表失败: {e}", exc_info=True)
+            QMessageBox.critical(self, '错误', f'导出课表失败: {str(e)}')
+    
+    def push_schedule(self):
+        """推送课表"""
+        if not self.schedule_data:
+            QMessageBox.warning(self, '警告', '没有可推送的课表数据')
+            return
+            
         try:
-            # 重新加载配置以获取最新的时间设置
-            self.cfg = load_config()
-            self.morning_count = self.cfg.getint("school_time", "morning_count", fallback=4)
-            self.afternoon_count = self.cfg.getint("school_time", "afternoon_count", fallback=4)
-            self.evening_count = self.cfg.getint("school_time", "evening_count", fallback=2)
-            self.total_classes = self.morning_count + self.afternoon_count + self.evening_count
+            push_manager = PushManager()
+            success = push_manager.push_schedule(self.schedule_data, 'email')  # 默认使用邮件推送
             
-            class_times_str = self.cfg.get("school_time", "class_times", fallback="")
-            self.class_times = []
-            if class_times_str:
-                self.class_times = [t.strip() for t in class_times_str.split(",")]
-            while len(self.class_times) < self.total_classes:
-                self.class_times.append("")
-            
-            # 更新行数和时间列
-            self.table.setRowCount(self.total_classes)
-            self.update_time_column()
-
-            schedule_html_file = APPDATA_DIR / "schedule.html"
-            
-            # 1. 加载手动修改的数据
-            manual_data = self.load_manual_schedule()
-            
-            # 2. 加载网页解析的数据
-            parsed_schedule = []
-            if schedule_html_file.exists():
-                with open(schedule_html_file, "r", encoding="utf-8") as f:
-                    html = f.read()
-                
-                school_code = get_current_school_code()
-                school_mod = get_school_module(school_code)
-                if school_mod:
-                    parsed_schedule = school_mod.parse_schedule(html)
-                else:
-                    QMessageBox.warning(self, "警告", f"找不到院校模块: {school_code}")
-            
-            # 清除之前的色块和合并单元格
-            for r in range(self.total_classes):
-                for c in range(1, 8):
-                    self.table.setCellWidget(r, c, None)
-                    self.table.setSpan(r, c, 1, 1)
-
-            # 3. 准备合并：记录已占用的单元格，手动修改优先
-            occupied = set()
-
-            # 先处理手动修改
-            for key, data in manual_data.items():
-                col, start = map(int, key.split("-"))
-                row = start - 1
-                row_span = data.get("row_span", 1)
-                
-                # 检查周次是否包含在内
-                weeks_list = data.get("周次列表", [])
-                if weeks_list and self.selected_week not in weeks_list:
-                    continue
-
-                name = data.get("课程名称", "")
-                room = data.get("教室", "")
-                teacher = data.get("教师", "")
-                
-                if 0 < col <= 7 and 0 <= row < self.total_classes:
-                    color = self.get_color(name)
-                    # 标记手动修改，使用不同颜色区分
-                    modified_color = self.adjust_color_brightness(color, -20)  # 稍微加深颜色表示手动修改
-                    block = CourseBlock(name, room, teacher, modified_color, is_manual=True)
-                    
-                    actual_span = min(row_span, self.total_classes - row)
-                    # 只有当跨越多个单元格时才设置span，避免单个单元格span警告
-                    if actual_span > 1:
-                        self.table.setSpan(row, col, actual_span, 1)
-                    self.table.setCellWidget(row, col, block)
-                    
-                    for r in range(row, row + actual_span):
-                        occupied.add((r, col))
-
-            # 再处理解析到的数据（如果单元格未被手动占用）
-            for s in parsed_schedule:
-                day_idx = s.get("星期", 0)
-                start = s.get("开始小节", 0)
-                end = s.get("结束小节", 0)
-                
-                # 关键：检查课程周次
-                weeks_list = s.get("周次列表", [])
-                if "全学期" not in weeks_list and self.selected_week not in weeks_list:
-                    continue
-                
-                if 0 < day_idx <= 7 and 0 < start <= self.total_classes:
-                    row = start - 1
-                    col = day_idx
-                    
-                    if (row, col) in occupied:
-                        continue # 手动修改已占用
-                        
-                    name = s.get("课程名称", "")
-                    room = s.get("教室", "")
-                    teacher = s.get("教师", "")
-                    
-                    effective_end = min(end, self.total_classes)
-                    row_span = effective_end - start + 1
-                    
-                    # 检查跨度内是否被占用
-                    can_place = True
-                    for r in range(row, row + row_span):
-                        if (r, col) in occupied:
-                            can_place = False
-                            break
-                    
-                    if can_place:
-                        color = self.get_color(name)
-                        # 自动解析的课程保持原色，手动添加的课程使用加深的颜色和虚线边框
-                        block = CourseBlock(name, room, teacher, color, is_manual=False)
-                        # 只有当跨越多个单元格时才设置span，避免单个单元格span警告
-                        if row_span > 1:
-                            self.table.setSpan(row, col, row_span, 1)
-                        self.table.setCellWidget(row, col, block)
-                        for r in range(row, row + row_span):
-                            occupied.add((r, col))
-                    
+            if success:
+                QMessageBox.information(self, '成功', '课表推送成功')
+            else:
+                QMessageBox.critical(self, '错误', '课表推送失败')
         except Exception as e:
-            QMessageBox.critical(self, "加载失败", f"渲染课表失败：{e}")
+            logger.error(f"推送课表失败: {e}", exc_info=True)
+            QMessageBox.critical(self, '错误', f'推送课表失败: {str(e)}')

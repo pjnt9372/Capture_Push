@@ -31,13 +31,13 @@ def build_plugin(school_code, output_dir=".", plugin_dir=None):
     Args:
         school_code: 学校代码
         output_dir: 输出目录
-        plugin_dir: 插件源目录，默认为 core/school/[school_code]
+        plugin_dir: 插件源目录，默认为 developer_space/[school_code]
     
     Returns:
         ZIP文件路径和SHA256校验和
     """
     if plugin_dir is None:
-        plugin_dir = Path("core") / "school" / school_code
+        plugin_dir = Path("developer_space") / school_code
     
     plugin_dir = Path(plugin_dir)
     
@@ -148,15 +148,15 @@ def main():
     school_name = input("请输入学校名称 (如: 某某大学): ").strip()
     contributor = input("请输入贡献者用户名: ").strip()
     
-    plugin_dir_input = input("请输入插件源目录 (直接回车使用默认: core/school/[学校代码]): ").strip()
+    plugin_dir_input = input("请输入插件源目录 (直接回车使用默认: developer_space/[学校代码]): ").strip()
     plugin_dir = plugin_dir_input if plugin_dir_input else None
     
     try:
         # 构建插件
         zip_path, sha256 = build_plugin(school_code, plugin_dir=plugin_dir)
         
-        # 生成下载URL（这是一个示例URL，实际使用时需要替换为真实URL）
-        download_url = f"https://github.com/pjnt9372/Capture_Push_School_Plugins/releases/download/plugin%2Flatest/school_{school_code}_plugin.zip"
+        # 生成下载URL
+        download_url = f"https://github.com/pjnt9372/Capture_Push_Plugin/releases/download/plugin%2Flatest/school_{school_code}_plugin.zip"
         
         # 更新插件索引
         update_plugins_index(school_code, school_name, sha256, download_url, contributor)

@@ -18,14 +18,25 @@ def get_tray_exe_path():
     # 首先尝试从注册表中读取安装路径
     try:
         key_path = r"SOFTWARE\Capture_Push"
-        # 尝试使用不同的访问标志组合
+        # 首先尝试从HKCU读取，然后尝试HKLM
+        install_path = None
         try:
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
                 install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
         except OSError:
-            # 如果64位访问失败，尝试标准访问
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ) as key:
-                install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
+            # 如果HKCU 64位访问失败，尝试标准访问
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                    install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
+            except OSError:
+                # 如果HKCU访问失败，再尝试HKLM（兼容旧版本）
+                try:
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+                        install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
+                except OSError:
+                    # 如果HKLM 64位访问也失败，尝试标准访问
+                    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_READ) as key:
+                        install_path, reg_type = winreg.QueryValueEx(key, "InstallPath")
         
         # 检查注册表中存储的安装路径是否存在
         if os.path.exists(install_path):
