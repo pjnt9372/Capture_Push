@@ -24,6 +24,8 @@ class BasicTab(QWidget):
         super().__init__(parent)
         self.config_manager = config_manager
         self.plugin_manager = get_plugin_manager()
+        # 防止刷新时触发选择变化事件的标志
+        self.refresh_in_progress = False
         self.init_ui()
         
     def init_ui(self):
@@ -39,15 +41,15 @@ class BasicTab(QWidget):
         self.school_selector_combo = QComboBox()
         self.school_selector_combo.setMinimumWidth(200)
         
-        # 刷新插件按钮
-        self.refresh_plugins_btn = QPushButton("刷新院校列表")
-        self.refresh_plugins_btn.clicked.connect(self.refresh_available_plugins)
+
         
         # 院校选择布局
         school_hbox = QHBoxLayout()
         school_hbox.addWidget(self.school_selector_combo)
-        school_hbox.addWidget(self.refresh_plugins_btn)
         school_hbox.addStretch()
+        
+        # 添加监听器，当用户选择院校时自动刷新
+        self.school_selector_combo.currentTextChanged.connect(self.on_school_selected)
         
         school_account_layout.addRow(self.school_selector_label, school_hbox)
         
@@ -68,30 +70,31 @@ class BasicTab(QWidget):
         self.plugin_hint_label.setStyleSheet("color: #0066cc; font-style: italic;")
         school_account_layout.addRow(self.plugin_hint_label)
         
-        # 配置按钮布局
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        self.save_config_btn = QPushButton("保存配置")
-        self.save_config_btn.clicked.connect(self.save_config)
-        btn_layout.addWidget(self.save_config_btn)
-        
-        self.load_config_btn = QPushButton("加载配置")
-        self.load_config_btn.clicked.connect(self.load_config)
-        btn_layout.addWidget(self.load_config_btn)
+
         
         # 主布局
         layout.addWidget(school_account_group)
-        layout.addLayout(btn_layout)
         
         # 加载初始配置
         self.load_config()
         # 刷新院校列表
         self.refresh_available_plugins()
     
+    def on_school_selected(self, text):
+        """当用户选择院校时调用此方法"""
+        # 如果正在刷新，则不执行任何操作，避免无限循环
+        if self.refresh_in_progress:
+            return
+        # 保存配置
+        self.save_config()
+        logger.info(f"用户选择了院校: {text}")
+    
     def refresh_available_plugins(self):
         """刷新可用插件列表"""
         try:
+            # 设置刷新标志，防止在此期间触发选择变化事件
+            self.refresh_in_progress = True
+            
             available_plugins = self.plugin_manager.get_available_plugins()
             
             # 保存当前选择
@@ -110,6 +113,9 @@ class BasicTab(QWidget):
         except Exception as e:
             logger.error(f"刷新可用插件列表失败: {e}", exc_info=True)
             QMessageBox.critical(self, "错误", f"刷新可用插件列表失败: {str(e)}")
+        finally:
+            # 重置刷新标志
+            self.refresh_in_progress = False
     
     def load_config(self):
         """加载配置"""
