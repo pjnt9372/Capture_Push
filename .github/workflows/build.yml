@@ -4,6 +4,16 @@ on:
   # 仅允许手动触发，禁用自动构建
   workflow_dispatch:
     inputs:
+      target_branch:
+        description: '选择要构建测试的分支'
+        required: false
+        default: 'current'
+        type: choice
+        options:
+          - 'current'
+          - 'master'
+          - 'Beta'
+          - 'develop'
       prerelease:
         description: '是否标记为预发布版本'
         required: false
@@ -21,7 +31,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch == 'current' && github.ref || github.event.inputs.target_branch }}
 
+      # =============== 显示构建信息 ===============
+      - name: Display Build Info
+        shell: powershell
+        run: |
+          Write-Host "🚀 构建信息"
+          Write-Host "===================" 
+          Write-Host "触发方式: ${{ github.event_name }}"
+          Write-Host "目标分支: ${{ github.event.inputs.target_branch }}"
+          Write-Host "实际分支: ${{ github.ref_name }}"
+          Write-Host "运行编号: ${{ github.run_number }}"
+          Write-Host "===================" 
+          
       # =============== 严格校验 VERSION 格式 ===============
       - name: Validate VERSION format
         shell: powershell
@@ -180,7 +204,9 @@ jobs:
           body: |
             Version: ${{ env.APP_VERSION }}
             Build: ${{ github.run_number }}
-            Branch: ${{ github.ref_name }}
+            Target Branch: ${{ github.event.inputs.target_branch }}
+            Actual Branch: ${{ github.ref_name }}
+            Trigger: ${{ github.event_name }}
             
             ## Packages
             - **Full**: Includes Python runtime (~200-500 MB)
