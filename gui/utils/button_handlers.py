@@ -138,7 +138,7 @@ def handle_reset_config_button_clicked(config_window_instance):
 
 def handle_export_config_button_clicked(config_window_instance):
     """
-    处理“导出明文配置”按钮的点击事件。
+    处理"导出明文配置"按钮的点击事件。
     首先尝试 Windows Hello 认证，如果不可用则使用教务系统密码验证。
     Args:
         config_window_instance (ConfigWindow): 主窗口实例。
@@ -149,7 +149,6 @@ def handle_export_config_button_clicked(config_window_instance):
         from core.utils.windows_auth import verify_user_credentials
         if not verify_user_credentials():
             logger.warning("Windows 身份验证未通过或已取消，无法导出配置。")
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(config_window_instance, "验证取消", "Windows 身份验证未通过或已取消，无法导出配置。")
             logger.info("Windows 身份验证未通过或已取消。")
             return
@@ -201,7 +200,6 @@ def handle_export_config_button_clicked(config_window_instance):
 
     except Exception as e:
         logger.error(f"导出过程中发生错误: {e}")
-        from PySide6.QtWidgets import QMessageBox
         QMessageBox.critical(config_window_instance, "导出失败", f"导出过程中发生错误：\n{str(e)}")
         logger.error(f"导出明文配置失败: {e}")
         import traceback

@@ -270,18 +270,26 @@ class PluginManagementTab(QWidget):
                 current_ver_item.setFlags(current_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 2, current_ver_item)
                     
-                # 更新最新版本 - 从JSON获取最新版本信息
-                update_info = self.plugin_manager.check_plugin_update(school_code)
-                if update_info:
-                    latest_version = update_info.get('remote_version', '-')
+                # 更新最新版本 - 强制从网络获取最新版本信息
+                # 首先清除缓存以确保获取最新数据
+                self.plugin_manager.clear_plugins_index_cache()
+                
+                # 从插件索引获取最新版本信息
+                plugin_info = self.plugin_manager.get_plugin_info_from_index(school_code)
+                if plugin_info and 'plugin_version' in plugin_info:
+                    latest_version = plugin_info.get('plugin_version', '-')
                 else:
-                    latest_version = '-'
+                    # 如果索引中没有，尝试检查更新
+                    update_info = self.plugin_manager.check_plugin_update(school_code)
+                    if update_info:
+                        latest_version = update_info.get('remote_version', '-')
+                    else:
+                        latest_version = '-'
                 latest_ver_item = QTableWidgetItem(latest_version)
                 latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 3, latest_ver_item)
                     
-                # 尝试更新贡献者信息
-                plugin_info = self.plugin_manager.get_plugin_info_from_index(school_code)
+                # 更新贡献者信息
                 if plugin_info and 'contributor' in plugin_info:
                     contributor = plugin_info.get('contributor', 'Unknown')
                 else:
