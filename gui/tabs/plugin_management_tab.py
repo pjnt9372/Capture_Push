@@ -373,28 +373,80 @@ class PluginManagementTab(QWidget):
             QMessageBox.critical(self, '错误', f'刷新插件列表失败: {str(e)}')
 
     def check_updates(self):
-        """检查插件更新"""
-        logger.info("开始检查所有插件更新")
+        """检查插件更新（从网络获取最新JSON）"""
+        logger.info("开始检查所有插件更新（从网络获取最新数据）")
         try:
+            # 调用插件管理器的更新方法，从网络下载最新的plugins_index.json文件
+            logger.debug("从网络更新插件索引文件")
+            success = self.plugin_manager.update_plugins_index()
+            if not success:
+                logger.warning("无法从网络更新插件索引文件")
+                QMessageBox.warning(self, '警告', '无法从网络更新插件索引文件，请检查网络连接')
+                return
+            
+            # 清除插件索引缓存，确保使用刚下载的新数据
+            logger.debug("清除插件索引缓存，使用新下载的数据")
+            self.plugin_manager.clear_plugins_index_cache()
+            
+            # 重新获取所有插件数据（从刚更新的本地JSON文件）
+            all_plugins = {}
+            plugins_index = self.plugin_manager._fetch_plugins_index()
+            if plugins_index and isinstance(plugins_index, dict):
+                plugins_list = plugins_index.get('plugins', [])
+                logger.info(f"从更新的JSON获取到 {len(plugins_list)} 个插件")
+                for plugin in plugins_list:
+                    school_code = plugin.get('school_code')
+                    school_name = plugin.get('school_name', school_code)
+                    contributor = plugin.get('contributor', 'Unknown')
+                    if school_code:
+                        all_plugins[school_code] = {
+                            'name': school_name,
+                            'contributor': contributor,
+                            'latest_version': plugin.get('plugin_version', '-')
+                        }
+                        logger.debug(f"更新的JSON中插件: {school_code} - {school_name} - {contributor} - {plugin.get('plugin_version', '-')}")
+            else:
+                logger.warning("无法从更新的JSON获取插件索引或插件索引为空")
+                QMessageBox.warning(self, '警告', '无法从更新的JSON获取插件索引，请检查网络连接')
+                return
+            
+            # 同时获取已安装的插件
+            installed_plugins = self.plugin_manager.get_available_plugins()
+            logger.info(f"已安装插件数量: {len(installed_plugins)}")
+            for code, name in installed_plugins.items():
+                logger.debug(f"已安装插件: {code} - {name}")
+                if code not in all_plugins:
+                    all_plugins[code] = {
+                        'name': name,
+                        'contributor': 'Unknown',
+                        'latest_version': '-'  # 本地插件的最新版本需要单独检查
+                    }
+            
+            logger.info(f"合并后插件总数: {len(all_plugins)}")
+            
+            # 遍历表格中的每一行，更新插件信息
             for row in range(self.plugin_table.rowCount()): 
                 code_item = self.plugin_table.item(row, 0)
                 if code_item:
                     school_code = code_item.text()
-                    logger.debug(f"检查第 {row} 行插件 {school_code} 的更新")
+                    logger.debug(f"更新第 {row} 行插件 {school_code} 的信息")
                         
-                    # 检查更新
-                    update_info = self.plugin_manager.check_plugin_update(school_code)
-                    if update_info:
-                        latest_version = update_info.get('remote_version', '-')
-                        contributor = update_info.get('contributor', 'Unknown')
-                        logger.info(f"插件 {school_code} 有更新: {latest_version}")
+                    # 更新最新版本 - 从刚更新的JSON数据
+                    if school_code in all_plugins:
+                        latest_version = all_plugins[school_code]['latest_version']
+                        contributor = all_plugins[school_code]['contributor']
                     else:
-                        # 如果没有更新，使用当前版本作为最新版本显示
-                        latest_version = self.plugin_manager._get_local_plugin_version(school_code)
-                        latest_version = latest_version if latest_version != "0.0.0" else "未安装"
-                        contributor = 'Unknown'
-                        logger.info(f"插件 {school_code} 无更新或获取更新信息失败")
-                        
+                        # 如果JSON数据中没有该插件，使用检查更新的方式获取
+                        update_info = self.plugin_manager.check_plugin_update(school_code)
+                        if update_info:
+                            latest_version = update_info.get('remote_version', '-')
+                            contributor = update_info.get('contributor', 'Unknown')
+                        else:
+                            latest_version = '-'
+                            contributor = 'Unknown'
+                    
+                    logger.info(f"插件 {school_code} 最新版本: {latest_version}")
+                    
                     # 更新最新版本列
                     latest_ver_item = QTableWidgetItem(latest_version)
                     latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -405,7 +457,8 @@ class PluginManagementTab(QWidget):
                     contributor_item.setFlags(contributor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     self.plugin_table.setItem(row, 4, contributor_item)
                         
-            logger.info("插件更新检查完成")
+            logger.info("插件更新检查完成（从网络获取数据）")
+            QMessageBox.information(self, '提示', '插件更新检查完成，已从网络更新 plugins_index.json 文件')
         except Exception as e:
             logger.error(f"检查更新失败: {str(e)}", exc_info=True)
             QMessageBox.critical(self, '错误', f'检查更新失败: {str(e)}')

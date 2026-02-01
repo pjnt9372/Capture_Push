@@ -64,7 +64,7 @@ class PluginManager:
             self.plugins_index_url = config.get('plugins', {}).get('plugins_index_url',
                 'https://github.com/pjnt9372/Capture_Push_Plugin/releases/latest/download/plugins_index.json')
         else:
-            self.plugins_index_url = 'https://github.com/pjnt9372/Capture_Push_Plugin/releases/latest/download/plugins_index.json'
+            self.plugins_index_url = 'https://github.com/pjnt9372/Capture_Push_Plugin/releases/download/plugin%2Flatest/plugins_index.json'
         
         self.logger.debug(f"PluginManager初始化完成，插件目录: {self.plugins_dir}, 数据目录: {self.data_dir}, 索引文件: {self.plugins_index_file}")
     
@@ -120,7 +120,7 @@ class PluginManager:
             # 尝试从远程获取插件索引
             req = urllib.request.Request(
                 self.plugins_index_url,
-                headers={'User-Agent': 'Capture_Push-PluginManager'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
             )
             
             with urllib.request.urlopen(req, timeout=10) as response:
@@ -151,7 +151,7 @@ class PluginManager:
                 self.logger.info(f"尝试使用代理访问插件索引: {proxy_url}")
                 req_proxy = urllib.request.Request(
                     proxy_url,
-                    headers={'User-Agent': 'Capture_Push-PluginManager'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                 
                 with urllib.request.urlopen(req_proxy, timeout=20) as response:
@@ -256,7 +256,7 @@ class PluginManager:
             # 从固定的 plugin/latest 标签获取插件信息
             req = urllib.request.Request(
                 self.repository_url,
-                headers={'User-Agent': 'Capture_Push-PluginManager'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
             )
                         
             with urllib.request.urlopen(req, timeout=10) as response:
@@ -312,7 +312,7 @@ class PluginManager:
                 proxy_api_url = PROXY_URL_PREFIX + self.repository_url
                 req_proxy = urllib.request.Request(
                     proxy_api_url,
-                    headers={'User-Agent': 'Capture_Push-PluginManager'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                     
                 with urllib.request.urlopen(req_proxy, timeout=20) as response:
@@ -593,7 +593,7 @@ class PluginManager:
             self.logger.debug(f"准备发送网络请求到: {self.plugins_index_url}")
             req = urllib.request.Request(
                 self.plugins_index_url,
-                headers={'User-Agent': 'Capture_Push-PluginManager'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
             )
             
             self.logger.debug(f"发送GET请求到: {self.plugins_index_url}")
@@ -637,7 +637,7 @@ class PluginManager:
                 self.logger.info(f"尝试使用代理访问插件索引: {proxy_url}")
                 req_proxy = urllib.request.Request(
                     proxy_url,
-                    headers={'User-Agent': 'Capture_Push-PluginManager'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                 
                 self.logger.debug(f"发送代理GET请求到: {proxy_url}")
@@ -689,7 +689,7 @@ class PluginManager:
                 self.logger.info(f"尝试使用代理访问插件索引: {proxy_url}")
                 req_proxy = urllib.request.Request(
                     proxy_url,
-                    headers={'User-Agent': 'Capture_Push-PluginManager'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                 
                 self.logger.debug(f"发送代理GET请求到: {proxy_url}")

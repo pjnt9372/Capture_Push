@@ -338,7 +338,7 @@ def init_logger(module_name):
     
     # 返回子 logger
     logger = logging.getLogger(module_name)
-    logger.info(f"🚀 模块日志初始化: {module_name} -> {log_file_path.name}")
+    logger.info(f"[INIT] 模块日志初始化: {module_name} -> {log_file_path.name}")
     
     return logger
 

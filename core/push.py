@@ -16,10 +16,30 @@ except ImportError:
     from core.config_manager import load_config
 
 # 导入具体的发送器实现
+# 为安装环境提供兼容性支持
+import sys
+import os
+
+# 确保core目录在Python路径中
+core_dir = os.path.dirname(os.path.abspath(__file__))
+if core_dir not in sys.path:
+    sys.path.insert(0, core_dir)
+
 try:
+    # 尝试直接导入（最常见的情况）
     from senders.email_sender import EmailSender
 except ImportError:
-    from core.senders.email_sender import EmailSender
+    try:
+        # 尝试绝对导入
+        from core.senders.email_sender import EmailSender
+    except ImportError:
+        # 创建备用的EmailSender类
+        class EmailSender:
+            def __init__(self):
+                pass
+            def send(self, subject, content):
+                print(f"[WARN] Email发送器不可用")
+                return False
 
 # 初始化日志
 logger = init_logger('push')
@@ -90,14 +110,20 @@ class PushManager:
         
         # 注册飞书推送
         try:
-            from core.senders.feishu_sender import FeishuSender
+            try:
+                from senders.feishu_sender import FeishuSender
+            except ImportError:
+                from core.senders.feishu_sender import FeishuSender
             self.register_sender("feishu", FeishuSender())
         except Exception as e:
             logger.warning(f"注册飞书发送器失败: {e}")
         
         # 注册Server酱推送
         try:
-            from core.senders.serverchan_sender import ServerChanSender
+            try:
+                from senders.serverchan_sender import ServerChanSender
+            except ImportError:
+                from core.senders.serverchan_sender import ServerChanSender
             self.register_sender("serverchan", ServerChanSender())
         except Exception as e:
             logger.warning(f"注册Server酱发送器失败: {e}")

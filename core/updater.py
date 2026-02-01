@@ -45,7 +45,7 @@ def download_file(url: str, destination: str, expected_checksum: str = None, pro
         # 尝试直接下载
         req = urllib.request.Request(
             url,
-            headers={'User-Agent': 'Capture_Push-Updater'}
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         )
         
         try:
@@ -60,7 +60,7 @@ def download_file(url: str, destination: str, expected_checksum: str = None, pro
             try:
                 req_proxy = urllib.request.Request(
                     proxy_url,
-                    headers={'User-Agent': 'Capture_Push-Updater'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                 urllib.request.urlretrieve(proxy_url, destination, _progress_hook)
                 logger.info("代理下载成功")
@@ -146,7 +146,7 @@ class Updater:
                 # 检查所有发布版本，包括预发布
                 req = urllib.request.Request(
                     self.ALL_RELEASES_API_URL,
-                    headers={'User-Agent': 'Capture_Push-Updater'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                 
                 with urllib.request.urlopen(req, timeout=10) as response:
@@ -178,7 +178,7 @@ class Updater:
                 # 只检查最新的稳定版本
                 req = urllib.request.Request(
                     self.API_URL,
-                    headers={'User-Agent': 'Capture_Push-Updater'}
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 )
                 
                 with urllib.request.urlopen(req, timeout=10) as response:
@@ -205,7 +205,7 @@ class Updater:
                     proxy_api_url = PROXY_URL_PREFIX + self.ALL_RELEASES_API_URL
                     req_proxy = urllib.request.Request(
                         proxy_api_url,
-                        headers={'User-Agent': 'Capture_Push-Updater'}
+                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                     )
                     
                     with urllib.request.urlopen(req_proxy, timeout=20) as response:
@@ -238,7 +238,7 @@ class Updater:
                     proxy_api_url = PROXY_URL_PREFIX + self.API_URL
                     req_proxy = urllib.request.Request(
                         proxy_api_url,
-                        headers={'User-Agent': 'Capture_Push-Updater'}
+                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                     )
                     
                     with urllib.request.urlopen(req_proxy, timeout=20) as response:
@@ -409,7 +409,7 @@ class Updater:
             # 尝试直接下载
             req = urllib.request.Request(
                 download_url,
-                headers={'User-Agent': 'Capture_Push-Updater'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
             )
             
             try:
@@ -424,7 +424,7 @@ class Updater:
                 try:
                     req_proxy = urllib.request.Request(
                         proxy_url,
-                        headers={'User-Agent': 'Capture_Push-Updater'}
+                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                     )
                     urllib.request.urlretrieve(proxy_url, download_path, _progress_hook)
                     logger.info("代理下载成功")
@@ -737,7 +737,7 @@ class Updater:
                         try:
                             req = urllib.request.Request(
                                 self.API_URL,
-                                headers={'User-Agent': 'Capture_Push-Updater'}
+                                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                             )
                             with urllib.request.urlopen(req, timeout=10) as response:
                                 release_data = json.loads(response.read().decode('utf-8'))
@@ -748,7 +748,7 @@ class Updater:
                                 proxy_api_url = PROXY_URL_PREFIX + self.API_URL
                                 req_proxy = urllib.request.Request(
                                     proxy_api_url,
-                                    headers={'User-Agent': 'Capture_Push-Updater'}
+                                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                                 )
                                 with urllib.request.urlopen(req_proxy, timeout=20) as response:
                                     release_data = json.loads(response.read().decode('utf-8'))
@@ -773,7 +773,7 @@ class Updater:
                 try:
                     req = urllib.request.Request(
                         self.API_URL,
-                        headers={'User-Agent': 'Capture_Push-Updater'}
+                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                     )
                     with urllib.request.urlopen(req, timeout=10) as response:
                         release_data = json.loads(response.read().decode('utf-8'))
