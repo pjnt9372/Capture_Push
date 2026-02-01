@@ -10,10 +10,9 @@ on:
         default: 'current'
         type: choice
         options:
-          - 'current'
           - 'master'
           - 'Beta'
-          - 'develop'
+          - 'Dev'
       prerelease:
         description: '是否标记为预发布版本'
         required: false
