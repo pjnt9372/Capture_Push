@@ -10,28 +10,24 @@ on:
         default: '执行手动同步任务'
 
 jobs:
-  manual-deploy:
+  sync:
     runs-on: ubuntu-latest
-    name: 将 developer_space 推送到插件仓库
-
     steps:
-      - name: 🛎️ 获取源代码
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 🚀 推送至 Capture_Push_Plugin
+      - name: Deploy to Plugin Repo
         uses: peaceiris/actions-gh-pages@v3
         with:
-          # --- 核心修改：使用 personal_token 而不是 github_token ---
-          # 告诉 Action 使用你自己的 PAT 去操作，绕过 GITHUB_TOKEN 的限制
+          # 使用 personal_token 参数传入你的 PAT
           personal_token: ${{ secrets.ACCESS_TOKEN }}
+
+          external_repository: pjnt9372/Capture_Push_Plugin
           
-          # 目标仓库地址
-          external_repository: https://github.com/pjnt9372/Capture_Push_Plugin.git
-          
-          # 要推送的目录
+          # 要推送的本地文件夹
           publish_dir: ./developer_space
           
-          # 目标分支
+          # 推送到目标仓库的 main 分支
           publish_branch: main
           
           # 强制覆盖
