@@ -15,19 +15,18 @@ jobs:
       - name: 🛎️ 检出源仓库
         uses: actions/checkout@v4
 
-      # 第二步：检出目标仓库
-      # 注意：这里需要检出目标仓库 (Capture_Push_Plugin)，而不是当前仓库
+      # 第二步：检出目标仓库 (关键修复点)
       - name: 🗂️ 检出目标仓库
         uses: actions/checkout@v4
         with:
-          # 👇 核心修正：指定目标仓库地址
+          # 👇 指定目标仓库地址
           repository: pjnt9372/Capture_Push_Plugin
           # 👇 指定分支
           ref: master
-          # 👇 将目标仓库克隆到本地的 target-repo 目录
+          # 👇 将目标仓库克隆到 local-target 目录
           path: target-repo
-          # 👇 使用 Secret 中的 Token 进行检出
-          token: $
+          # 👇 核心修复：显式传入 Token 进行认证
+          token: ${{ secrets.ACCESS_TOKEN }}
 
       # 第三步：复制文件
       - name: 📂 复制文件到目标目录
@@ -52,10 +51,10 @@ jobs:
       - name: 🚀 推送更新
         uses: ad-m/github-push-action@master
         with:
-          # 👇 核心修正：这里必须指向我们刚才修改的 target-repo 目录
+          # 👇 指向我们刚才修改的 target-repo 目录
           directory: target-repo
           # 👇 推送到目标仓库的 master 分支
           branch: master
           # 👇 使用 Token 推送
-          token: $
+          token: ${{ secrets.ACCESS_TOKEN }}
           commit_message: Update developer_space files
