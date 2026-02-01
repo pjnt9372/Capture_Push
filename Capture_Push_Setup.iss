@@ -45,6 +45,7 @@ Name: autostart; Description: "开机自动启动托盘程序"; GroupDescription
 [Files]
 Source: ".venv\*"; DestDir: "{app}\.venv"; Flags: ignoreversion recursesubdirs
 Source: "core\plugins\*"; DestDir: "{app}\core\plugins"; Flags: ignoreversion recursesubdirs
+Source: "core\senders\*"; DestDir: "{app}\core\senders"; Flags: ignoreversion recursesubdirs
 Source: "core\config_manager.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\go.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\log.py"; DestDir: "{app}\core"; Flags: ignoreversion
@@ -90,7 +91,14 @@ Type: files; Name: "{app}\generate_config.py"
 Type: files; Name: "{app}\VERSION"
 
 ; 删除核心模块
-Type: filesandordirs; Name: "{app}\core"
+Type: filesandordirs; Name: "{app}\core\plugins"
+Type: filesandordirs; Name: "{app}\core\senders"
+Type: filesandordirs; Name: "{app}\core\utils"
+Type: files; Name: "{app}\core\config_manager.py"
+Type: files; Name: "{app}\core\go.py"
+Type: files; Name: "{app}\core\log.py"
+Type: files; Name: "{app}\core\push.py"
+Type: files; Name: "{app}\core\updater.py"
 
 ; 删除GUI模块
 Type: filesandordirs; Name: "{app}\gui"
@@ -209,7 +217,7 @@ begin
       DelTree(ExpandConstant('{localappdata}\Capture_Push'), True, True, True);
       
       // 删除可能的临时文件
-      DelTree(ExpandConstant('{temp}\Capture_Push_*'), True, True, True);
+      DelTree(ExpandConstant('{tmp}\Capture_Push_*'), True, True, True);
       DelTree(ExpandConstant('{localappdata}\Temp\Capture_Push_*'), True, True, True);
     end;
     

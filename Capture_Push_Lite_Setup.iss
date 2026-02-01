@@ -48,6 +48,7 @@ Name: autostart; Description: "开机自动启动托盘程序"; GroupDescription
 [Files]
 ; 仅打包核心程序文件，不包含 .venv
 Source: "core\plugins\*"; DestDir: "{app}\core\plugins"; Flags: ignoreversion recursesubdirs
+Source: "core\senders\*"; DestDir: "{app}\core\senders"; Flags: ignoreversion recursesubdirs
 Source: "core\config_manager.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\go.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\log.py"; DestDir: "{app}\core"; Flags: ignoreversion
