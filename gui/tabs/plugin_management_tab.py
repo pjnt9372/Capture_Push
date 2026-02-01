@@ -126,6 +126,17 @@ class PluginManagementTab(QWidget):
         
         self.operation_in_progress = True
         logger.info(f"开始安装插件 {school_code}")
+        
+        # 检查本地是否已存在插件
+        current_version = self.plugin_manager._get_local_plugin_version(school_code)
+        if current_version != "0.0.0":
+            reply = QMessageBox.question(self, '确认', f'院校 {school_code} 插件已安装 (版本: {current_version})，是否要重新安装？', 
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.No:
+                logger.info(f"用户取消重新安装插件 {school_code}")
+                self.operation_in_progress = False
+                return
+        
         try:
             # 检查是否有更新
             update_info = self.plugin_manager.check_plugin_update(school_code)
@@ -259,6 +270,16 @@ class PluginManagementTab(QWidget):
                 current_ver_item.setFlags(current_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 2, current_ver_item)
                     
+                # 更新最新版本 - 从JSON获取最新版本信息
+                update_info = self.plugin_manager.check_plugin_update(school_code)
+                if update_info:
+                    latest_version = update_info.get('remote_version', '-')
+                else:
+                    latest_version = '-'
+                latest_ver_item = QTableWidgetItem(latest_version)
+                latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.plugin_table.setItem(row, 3, latest_ver_item)
+                    
                 # 尝试更新贡献者信息
                 plugin_info = self.plugin_manager.get_plugin_info_from_index(school_code)
                 if plugin_info and 'contributor' in plugin_info:
@@ -269,7 +290,7 @@ class PluginManagementTab(QWidget):
                 contributor_item.setFlags(contributor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 4, contributor_item)
                     
-                logger.debug(f"已更新 {school_code} 的版本信息为: {current_version if current_version != '0.0.0' else '未安装'}，贡献者: {contributor}")
+                logger.debug(f"已更新 {school_code} 的版本信息为: {current_version if current_version != '0.0.0' else '未安装'}，最新版本: {latest_version}，贡献者: {contributor}")
                 break
 
     def refresh_plugins(self):
@@ -355,12 +376,12 @@ class PluginManagementTab(QWidget):
         """检查插件更新"""
         logger.info("开始检查所有插件更新")
         try:
-            for row in range(self.plugin_table.rowCount()):
+            for row in range(self.plugin_table.rowCount()): 
                 code_item = self.plugin_table.item(row, 0)
                 if code_item:
                     school_code = code_item.text()
                     logger.debug(f"检查第 {row} 行插件 {school_code} 的更新")
-                    
+                        
                     # 检查更新
                     update_info = self.plugin_manager.check_plugin_update(school_code)
                     if update_info:
@@ -373,17 +394,17 @@ class PluginManagementTab(QWidget):
                         latest_version = latest_version if latest_version != "0.0.0" else "未安装"
                         contributor = 'Unknown'
                         logger.info(f"插件 {school_code} 无更新或获取更新信息失败")
-                    
+                        
                     # 更新最新版本列
                     latest_ver_item = QTableWidgetItem(latest_version)
                     latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     self.plugin_table.setItem(row, 3, latest_ver_item)
-                    
+                        
                     # 更新贡献者列
                     contributor_item = QTableWidgetItem(contributor)
                     contributor_item.setFlags(contributor_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     self.plugin_table.setItem(row, 4, contributor_item)
-                    
+                        
             logger.info("插件更新检查完成")
         except Exception as e:
             logger.error(f"检查更新失败: {str(e)}", exc_info=True)
@@ -410,9 +431,10 @@ class PluginManagementTab(QWidget):
                     if school_code:
                         all_plugins[school_code] = {
                             'name': school_name,
-                            'contributor': contributor
+                            'contributor': contributor,
+                            'latest_version': plugin.get('plugin_version', '-')
                         }
-                        logger.debug(f"插件索引中找到: {school_code} - {school_name} - {contributor}")
+                        logger.debug(f"插件索引中找到: {school_code} - {school_name} - {contributor} - {plugin.get('plugin_version', '-')}")
             else:
                 logger.warning("无法获取插件索引或插件索引为空")
             
@@ -424,7 +446,8 @@ class PluginManagementTab(QWidget):
                 if code not in all_plugins:
                     all_plugins[code] = {
                         'name': name,
-                        'contributor': 'Unknown'
+                        'contributor': 'Unknown',
+                        'latest_version': '-'  # 本地插件的最新版本需要单独检查
                     }
             
             logger.info(f"合并后插件总数: {len(all_plugins)}")
@@ -435,7 +458,8 @@ class PluginManagementTab(QWidget):
                 self.original_plugins_data.append({
                     'code': code,
                     'name': data['name'],
-                    'contributor': data['contributor']
+                    'contributor': data['contributor'],
+                    'latest_version': data['latest_version']
                 })
             
             # 显示插件列表
@@ -455,6 +479,7 @@ class PluginManagementTab(QWidget):
                 code = plugin['code']
                 name = plugin['name']
                 contributor = plugin['contributor']
+                latest_version = plugin.get('latest_version', '-')
                 
                 logger.debug(f"填充第 {row} 行: {code} - {name} - {contributor}")
                 
@@ -476,8 +501,8 @@ class PluginManagementTab(QWidget):
                 current_ver_item.setFlags(current_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 2, current_ver_item)
                 
-                # 最新版本（暂时显示为未知，需要检查更新后才能知道）
-                latest_ver_item = QTableWidgetItem('-')
+                # 最新版本 - 从JSON获取的最新版本信息
+                latest_ver_item = QTableWidgetItem(latest_version)
                 latest_ver_item.setFlags(latest_ver_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.plugin_table.setItem(row, 3, latest_ver_item)
                 

@@ -179,10 +179,10 @@ class ConfigWindow(QMainWindow):
     def show_grades_viewer(self):
         logger.info("显示成绩查看器")
         try:
-            from .grades_window import GradesViewerWindow
+            from .grades_window import GradesWindow
             # 检查是否已存在成绩窗口实例
             if not hasattr(self, '_grades_viewer_window') or self._grades_viewer_window is None:
-                self._grades_viewer_window = GradesViewerWindow()
+                self._grades_viewer_window = GradesWindow()
             # 显示窗口
             self._grades_viewer_window.show()
             self._grades_viewer_window.raise_()  # 将窗口置于前台
