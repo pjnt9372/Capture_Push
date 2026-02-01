@@ -15,16 +15,19 @@ jobs:
       - name: 🛎️ 检出源仓库
         uses: actions/checkout@v4
 
-      # 第二步：检出目标仓库 (克隆到 local-target 目录)
+      # 第二步：检出目标仓库
+      # 注意：这里需要检出目标仓库 (Capture_Push_Plugin)，而不是当前仓库
       - name: 🗂️ 检出目标仓库
         uses: actions/checkout@v4
         with:
-          # 目标仓库地址
+          # 👇 核心修正：指定目标仓库地址
           repository: pjnt9372/Capture_Push_Plugin
-          # 指定分支
+          # 👇 指定分支
           ref: master
-          # 将目标仓库克隆到当前工作区的 local-target 目录下
-          path: local-target
+          # 👇 将目标仓库克隆到本地的 target-repo 目录
+          path: target-repo
+          # 👇 使用 Secret 中的 Token 进行检出
+          token: $
 
       # 第三步：复制文件
       - name: 📂 复制文件到目标目录
@@ -35,25 +38,24 @@ jobs:
             exit 1
           fi
           
-          # 清空目标目录下的 developer_space 文件夹内容（如果存在）
-          rm -rf local-target/developer_space/*
+          # 清空目标目录下的 developer_space 文件夹内容
+          rm -rf target-repo/developer_space/*
           
           # 将源仓库的文件复制到目标目录的 developer_space 文件夹中
-          cp -r developer_space/* local-target/developer_space/
+          cp -r developer_space/* target-repo/developer_space/
           
           # 查看复制了哪些文件（用于调试）
           echo "准备推送的文件列表："
-          ls -la local-target/developer_space/
+          ls -la target-repo/developer_space/
 
       # 第四步：推送回目标仓库
       - name: 🚀 推送更新
         uses: ad-m/github-push-action@master
         with:
-          # 指定要推送的目录（即我们刚才修改过的 target 目录）
-          github_token: $
-          # 指定分支
+          # 👇 核心修正：这里必须指向我们刚才修改的 target-repo 目录
+          directory: target-repo
+          # 👇 推送到目标仓库的 master 分支
           branch: master
-          # 指定要提交的目录
-          directory: local-target
-          # 提交信息
+          # 👇 使用 Token 推送
+          token: $
           commit_message: Update developer_space files
