@@ -1,0 +1,46 @@
+name: manual-sync
+
+# 触发器：只允许通过 GitHub 界面手动点击运行
+on:
+  workflow_dispatch:
+    inputs:
+      run_reason:
+        description: '执行原因/备注'
+        required: false
+        default: '执行手动同步任务'
+
+# 定义一个 Job
+jobs:
+  manual-deploy:
+    # 使用最新的 Ubuntu 环境
+    runs-on: ubuntu-latest
+    # 任务名称
+    name: 将 developer_space 推送到插件仓库
+
+    steps:
+      # 第一步：检出源仓库的代码
+      - name: 🛎️ 获取源代码
+        uses: actions/checkout@v4
+
+      # 第二步：使用 peaceiris/actions-gh-pages 进行跨仓库推送
+      - name: 🚀 推送至 Capture_Push_Plugin
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          # 认证：使用之前创建的 ACCESS_TOKEN Secret
+          github_token: $
+          
+          # 目标仓库地址：使用 HTTPS 协议 + Token 认证
+          # 格式：https://<TOKEN>@github.com/用户名/仓库名.git
+          external_repository: https://${{ secrets.ACCESS_TOKEN }}@github.com/pjnt9372/Capture_Push_Plugin.git
+          
+          # 要推送的本地目录
+          publish_dir: ./developer_space
+          
+          # 推送到目标仓库的分支
+          publish_branch: main
+          
+          # 强制推送，覆盖历史（保证内容绝对一致）
+          force_orphan: true
+          
+          # 提交信息：包含手动输入的备注
+          commit_message: $
