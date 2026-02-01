@@ -13,6 +13,7 @@ import urllib.request
 import zipfile
 import subprocess
 import hashlib
+
 from pathlib import Path
 from datetime import datetime
 
@@ -144,49 +145,90 @@ def main():
         build_dir.mkdir(parents=True)
     
     # 2. 准备便携式 Python 环境 (在 build 目录下)
-    # 如果 .venv 已存在且满足要求，尝试增量更新而不是全部删除
-    # 但为了确保 100% 隔离，这里依然保留逻辑，主要通过 pip 缓存加速
+    # 如果 .venv 已存在则不再重复创建，避免重复下载
     if venv_dir.exists():
-        log(f"发现已有 .venv，将进行清理以确保隔离环境纯净...")
-        shutil.rmtree(venv_dir)
-    venv_dir.mkdir(parents=True, exist_ok=True)
+        log(f"发现已有 .venv，跳过创建以避免重复下载...")
+    else:
+        venv_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 使用改进的缓存机制下载 Python
+        download_with_cache(py_url, zip_path)
 
-    # 使用改进的缓存机制下载 Python
-    download_with_cache(py_url, zip_path)
+        log("正在解压 Python 核心...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(venv_dir)
 
-    log("正在解压 Python 核心...")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(venv_dir)
+        log("配置 ._pth 文件以支持 site-packages...")
+        pth_files = list(venv_dir.glob("python*._pth"))
+        if pth_files:
+            pth_file = pth_files[0]
+            with open(pth_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            with open(pth_file, 'w', encoding='utf-8') as f:
+                for line in lines:
+                    f.write(line.replace("#import site", "import site"))
 
-    log("配置 ._pth 文件以支持 site-packages...")
-    pth_files = list(venv_dir.glob("python*._pth"))
-    if pth_files:
-        pth_file = pth_files[0]
-        with open(pth_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        with open(pth_file, 'w', encoding='utf-8') as f:
-            for line in lines:
-                f.write(line.replace("#import site", "import site"))
+        log("准备 pip...")
+        # 使用改进的缓存机制下载 get-pip.py
+        download_with_cache(get_pip_url, cached_get_pip)
+        shutil.copy2(cached_get_pip, get_pip_path)
+        
+        subprocess.run([str(venv_dir / "python.exe"), str(get_pip_path), "--no-warn-script-location"], cwd=venv_dir, check=True)
+        os.remove(get_pip_path)
 
-    log("准备 pip...")
-    # 使用改进的缓存机制下载 get-pip.py
-    download_with_cache(get_pip_url, cached_get_pip)
-    shutil.copy2(cached_get_pip, get_pip_path)
-    
-    subprocess.run([str(venv_dir / "python.exe"), str(get_pip_path), "--no-warn-script-location"], cwd=venv_dir, check=True)
-    os.remove(get_pip_path)
+        # 安装项目依赖（使用改进的缓存机制）
+        install_dependencies_with_cache(venv_dir, requirements_file, pip_cache_dir)
 
-    # 安装项目依赖（使用改进的缓存机制）
-    install_dependencies_with_cache(venv_dir, requirements_file, pip_cache_dir)
+
     
     # 3. 同步源码到构建空间 (保持与仓库相同的相对结构，以便 .iss 无需修改即可运行)
     log("正在同步组件到构建空间...")
-    copy_tree(project_root / "core", build_dir / "core")
+    
+    # 创建 core 目录结构
+    core_dst = build_dir / "core"
+    core_dst.mkdir(parents=True, exist_ok=True)
+    
+    # 复制 core 目录下的所有内容（文件和目录）
+    core_src = project_root / "core"
+    for item in core_src.iterdir():
+        if item.is_file():
+            # 复制 core 目录下的所有文件
+            shutil.copy2(item, core_dst / item.name)
+        elif item.is_dir():
+            # 复制 core 目录下的所有子目录
+            item_dst = core_dst / item.name
+            if item.name == "plugins":
+                # 对 plugins 目录特殊处理，只复制框架和示例插件
+                if item_dst.exists():
+                    shutil.rmtree(item_dst)
+                item_dst.mkdir(parents=True, exist_ok=True)
+                
+                # 复制插件目录的基础文件
+                for sub_item in item.iterdir():
+                    if sub_item.is_file():  # 复制基础文件，如 __init__.py 和 plugin_manager.py
+                        shutil.copy2(sub_item, item_dst / sub_item.name)
+                    elif sub_item.is_dir() and sub_item.name in ["12345"]:  # 只复制示例插件目录
+                        copy_tree(sub_item, item_dst / sub_item.name)
+                        log(f"已复制示例插件目录: {sub_item.name}")
+                    else:
+                        log(f"跳过非示例插件目录: {sub_item.name}")
+                
+                log(f"已复制插件系统目录（仅示例插件）")
+            else:
+                # 复制其他所有子目录（如 senders, utils 等）
+                copy_tree(item, item_dst)
+                log(f"已复制 core 子目录: {item.name}")
+    
+    # 注意：其他学校插件将通过插件管理器在线下载，不在主程序中包含
+
+
+    # 复制其他目录
     copy_tree(project_root / "gui", build_dir / "gui")
     copy_tree(project_root / "resources", build_dir / "resources")
+    copy_tree(project_root / "tray", build_dir / "tray")  # 复制tray目录
     
     # 复制必要文件到 build 根目录
-    files_to_copy = ["VERSION", "config.ini", "generate_config.py", "Capture_Push_Setup.iss", "Capture_Push_Lite_Setup.iss", "ChineseSimplified.isl"]
+    files_to_copy = ["VERSION", "config.ini", "generate_config.py", "Capture_Push_Setup.iss", "Capture_Push_Lite_Setup.iss", "ChineseSimplified.isl", "pyproject.toml", "uv.lock"]
     for f_name in files_to_copy:
         src_f = project_root / f_name
         if src_f.exists():

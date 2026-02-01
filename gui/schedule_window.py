@@ -9,16 +9,7 @@ from PySide6.QtWidgets import (
     QApplication, QLabel, QSpinBox
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon
-
-# 导入日志模块
-try:
-    from log import init_logger
-except ImportError:
-    from core.log import init_logger
-
-# 初始化日志记录器
-logger = init_logger("schedule_window")
+from PySide6.QtGui import QColor
 
 # 动态获取基础目录和配置路径
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,17 +20,19 @@ except ImportError:
     from core.log import get_config_path, get_log_file_path
     from core.config_manager import load_config
 
+# 使用插件管理器获取学校模块
 try:
-    from school import get_school_module
+    from core.plugins.plugin_manager import PluginManager
+    plugin_manager = PluginManager()
 except ImportError:
-    from core.school import get_school_module
+    plugin_manager = None
 
 # 导入自定义组件和对话框
 try:
-    from widgets import CourseBlock
+    from custom_widgets import CourseBlock
     from dialogs import CourseEditDialog
 except ImportError:
-    from gui.widgets import CourseBlock
+    from gui.custom_widgets import CourseBlock
     from gui.dialogs import CourseEditDialog
 
 CONFIG_FILE = str(get_config_path())
@@ -51,20 +44,18 @@ def get_current_school_code():
     cfg = load_config()
     return cfg.get("account", "school_code", fallback="10546")
 
+def get_school_module(school_code):
+    """通过插件管理器获取学校模块"""
+    if plugin_manager:
+        return plugin_manager.load_plugin(school_code)
+    return None
+
 class ScheduleViewerWindow(QWidget):
     """独立窗口：查看课表（色块展示版，支持周次切换）"""
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Capture_Push · 课表查看")
         self.resize(1100, 850)
-        
-        # 设置窗口图标
-        try:
-            icon_path = BASE_DIR / "resources" / "app_icon.ico"
-            if icon_path.exists():
-                self.setWindowIcon(QIcon(str(icon_path)))
-        except Exception as e:
-            print(f"无法设置课表窗口图标: {e}")
         
         # 预设更柔和的浅色列表，适合黑色文字
         self.colors = [
@@ -443,6 +434,10 @@ class ScheduleViewerWindow(QWidget):
                 school_mod = get_school_module(school_code)
                 if school_mod:
                     parsed_schedule = school_mod.parse_schedule(html)
+                    
+                    # 验证数据格式 - 插件应返回课表字典列表
+                    if not isinstance(parsed_schedule, list):
+                        raise TypeError(f"插件parse_schedule应返回列表，实际返回类型: {type(parsed_schedule).__name__}")
                 else:
                     QMessageBox.warning(self, "警告", f"找不到院校模块: {school_code}")
             
@@ -470,7 +465,7 @@ class ScheduleViewerWindow(QWidget):
                 room = data.get("教室", "")
                 teacher = data.get("教师", "")
                 
-                if 0 < col <= 7 and 0 <= row < self.total_classes:
+                if 0 < col <= 7 and 0 < row < self.total_classes:
                     color = self.get_color(name)
                     # 标记手动修改，使用不同颜色区分
                     modified_color = self.adjust_color_brightness(color, -20)  # 稍微加深颜色表示手动修改
@@ -486,7 +481,11 @@ class ScheduleViewerWindow(QWidget):
                         occupied.add((r, col))
 
             # 再处理解析到的数据（如果单元格未被手动占用）
-            for s in parsed_schedule:
+            for i, s in enumerate(parsed_schedule):
+                # 验证每个课表条目必须是字典
+                if not isinstance(s, dict):
+                    raise TypeError(f"课表列表中第{i+1}项应为字典，实际类型: {type(s).__name__}")
+                    
                 day_idx = s.get("星期", 0)
                 start = s.get("开始小节", 0)
                 end = s.get("结束小节", 0)

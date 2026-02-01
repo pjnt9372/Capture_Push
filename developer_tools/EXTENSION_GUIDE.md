@@ -20,9 +20,9 @@
    import requests
    from core.log import init_logger, get_config_path
    from core.config_manager import load_config
-
+   
    logger = init_logger('dingtalk_sender')
-
+   
    class DingTalkSender:
        def send(self, subject, content):
            # 1. 加载配置（使用统一的配置管理器，自动处理加密）
@@ -77,6 +77,7 @@
 ```ini
 [push]
 method = dingtalk
+#事实上这段并不需要你手动添加，配置管理器应当会自动生成
 
 [dingtalk]
 webhook_url = https://oapi.dingtalk.com/robot/send?access_token=your_access_token
@@ -115,6 +116,87 @@ webhook_url = https://oapi.dingtalk.com/robot/send?access_token=your_access_toke
        "12345": "core.school.12345",  # 新增
    }
    ```
+
+---
+
+## 3. 插件化院校模块
+
+Capture_Push 支持院校模块插件化，允许通过 GitHub API 轻松更新和添加新的院校模块。系统内置了完整的插件管理器，提供自动下载、版本管理和安全验证功能。
+
+### 插件结构
+
+插件应遵循以下标准结构：
+
+```
+school_[code]/
+├── __init__.py              # 插件入口文件，导出必要接口
+├── getCourseGrades.py       # 成绩获取模块
+├── getCourseSchedule.py     # 课表获取模块
+├── version.txt              # 插件版本文件（推荐，事实上即便没有也会被程序补齐）
+```
+
+### 插件接口要求
+
+#### `__init__.py` 文件
+
+必须导出以下内容：
+
+```python
+# 标准导入
+from .getCourseGrades import fetch_grades, parse_grades
+from .getCourseSchedule import fetch_course_schedule, parse_schedule
+
+# 必需的插件元数据
+SCHOOL_NAME = "院校名称"           # 院校中文名称
+SCHOOL_CODE = "院校代码"           # 院校代码（如 "10546"）
+PLUGIN_VERSION = "插件版本"        # 版本号（应当使用语义化版本号但事实上这个项其实没用可以随便填）
+
+```
+
+### 通过GUI管理插件
+
+1. 打开主配置窗口
+2. 切换到"插件管理"标签页
+3. 在这里可以：
+   - **查看插件**：浏览已安装和可用的插件列表
+   - **搜索插件**：通过关键词快速查找特定院校插件
+   - **检查更新**：一键检查所有插件的可用更新
+   - **安装插件**：从官方仓库安装新的院校插件
+   - **卸载插件**：移除不需要的插件模块
+   - **查看详情**：查看插件的详细信息和版本历史
+
+### 插件发布
+
+插件通过 GitHub Releases 发布，系统会自动管理版本和索引：
+
+#### 发布流程
+1. **准备插件**：按照标准结构准备好插件目录
+2. **构建插件包**：使用 `build_plugin.py` 工具构建 ZIP 包
+3. **上传 Release**：将插件包上传到 GitHub Release
+4. **更新索引**：系统自动更新 `plugins_index.json` 索引文件
+
+#### 插件元数据格式
+发布时需要包含以下元数据信息：
+
+```json
+{
+  "school_code": "12345",
+  "school_name": "示例学校",
+  "plugin_version": "20260130_153022",  // 时间戳格式
+  "sha256": "插件文件的SHA256校验和",
+  "download_url": "https://github.com/user/repo/releases/download/plugin%2Flatest/school_12345_plugin.zip",
+  "contributor": "贡献者GitHub用户名",
+  "last_updated": "2026-01-30"
+}
+```
+
+#### 自动化构建
+推荐使用 GitHub Actions 实现自动化构建和发布：
+- 自动构建插件包
+- 自动生成版本号（时间戳格式）
+- 自动计算 SHA256 校验和
+- 自动更新插件索引文件  
+希望实现的部分说
 
 ### 数据规范：
 - **成绩数据**: 返回列表，每项为字典，必须包含 `课程名称`, `成绩`, `学分`, `课程属性`, `学期`。

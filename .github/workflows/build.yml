@@ -4,8 +4,18 @@ on:
   # 仅允许手动触发，禁用自动构建
   workflow_dispatch:
     inputs:
+      target_branch:
+        description: 'Select branch to build and test'
+        required: false
+        default: 'current'
+        type: choice
+        options:
+          - 'current'
+          - 'master'
+          - 'Beta'
+          - 'Dev'
       prerelease:
-        description: '是否标记为预发布版本'
+        description: 'Mark as pre-release version'
         required: false
         default: false
         type: boolean
@@ -21,19 +31,33 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch == 'current' && github.ref || github.event.inputs.target_branch }}
 
-      # =============== 严格校验 VERSION 格式 ===============
+      # =============== Display Build Information ===============
+      - name: Display Build Info
+        shell: powershell
+        run: |
+          Write-Host "Build Information"
+          Write-Host "===================" 
+          Write-Host "Trigger Method: ${{ github.event_name }}"
+          Write-Host "Target Branch: ${{ github.event.inputs.target_branch }}"
+          Write-Host "Actual Branch: ${{ github.ref_name }}"
+          Write-Host "Run Number: ${{ github.run_number }}"
+          Write-Host "===================" 
+          
+      # =============== Strictly Validate VERSION Format ===============
       - name: Validate VERSION format
         shell: powershell
         run: |
           $versionLine = Get-Content "VERSION" -TotalCount 1 -ErrorAction SilentlyContinue
           if (-not $versionLine) {
-            Write-Error "❌ VERSION file is missing or empty!"
+            Write-Error "VERSION file is missing or empty!"
             exit 1
           }
           $version = $versionLine.Trim()
           if ($version -eq "") {
-            Write-Error "❌ VERSION file is empty!"
+            Write-Error "VERSION file is empty!"
             exit 1
           }
 
@@ -49,24 +73,24 @@ jobs:
           if ($isMasterPush) {
             # master 分支必须是稳定版
             if ($version -notmatch $stablePattern) {
-              Write-Error "❌ On 'master', VERSION must be 'x.x.x' (e.g., '1.2.3'). Found: '$version'"
+              Write-Error "On 'master', VERSION must be 'x.x.x' (e.g., '1.2.3'). Found: '$version'"
               exit 1
             }
           } elseif ($isBetaPush) {
             # Beta 分支必须带有 _Beta 后缀
             if ($version -notmatch $betaPattern) {
-              Write-Error "❌ On 'Beta' branch, VERSION must be 'x.x.x_Beta'. Found: '$version'"
+              Write-Error "On 'Beta' branch, VERSION must be 'x.x.x_Beta'. Found: '$version'"
               exit 1
             }
           } else {
             # 手动触发：允许三种格式
             if (-not ($version -match $stablePattern -or $version -match $betaPattern -or $version -match $devPattern)) {
-              Write-Error "❌ VERSION must be 'x.x.x', 'x.x.x_Beta', or 'x.x.x_Dev'. Found: '$version'"
+              Write-Error "VERSION must be 'x.x.x', 'x.x.x_Beta', or 'x.x.x_Dev'. Found: '$version'"
               exit 1
             }
           }
 
-      # =============== 构建步骤 ===============
+      # =============== Build Steps ===============
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -104,7 +128,7 @@ jobs:
           
           Remove-Item "get-pip.py", "..\python_embed.zip"
           cd ..
-          Write-Host "✅ Portable Python ready."
+          Write-Host "Portable Python ready."
 
       - name: Setup Inno Setup Chinese Support
         shell: powershell
@@ -127,7 +151,7 @@ jobs:
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Capture_Push_Lite_Setup.iss
 
-      # =============== 生成校验和文件 ===============
+      # =============== Generate Checksum Files ===============
       - name: Generate Checksums
         shell: powershell
         run: |
@@ -158,7 +182,7 @@ jobs:
             *.sha256
           retention-days: 3
 
-      # =============== 提取版本并准备发布 ===============
+      # =============== Extract Version and Prepare Release ===============
       - name: Extract Version
         shell: powershell
         run: |
@@ -167,7 +191,7 @@ jobs:
           $tagVersion = "v$version" -replace "_", "-"
           Add-Content -Path $env:GITHUB_ENV -Value "TAG_VERSION=$tagVersion"
 
-      # =============== 条件性发布 Release ===============
+      # =============== Conditional Release Creation ===============
       - name: Create Release
         uses: softprops/action-gh-release@v2
         if: ${{ !contains(env.APP_VERSION, '_Dev') && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/Beta' || github.event_name == 'workflow_dispatch') }}
@@ -180,7 +204,9 @@ jobs:
           body: |
             Version: ${{ env.APP_VERSION }}
             Build: ${{ github.run_number }}
-            Branch: ${{ github.ref_name }}
+            Target Branch: ${{ github.event.inputs.target_branch }}
+            Actual Branch: ${{ github.ref_name }}
+            Trigger: ${{ github.event_name }}
             
             ## Packages
             - **Full**: Includes Python runtime (~200-500 MB)
@@ -191,8 +217,9 @@ jobs:
             - **Lite SHA256**: `${{ env.LITE_INSTALLER_SHA256 }}`
             
             You can verify the integrity of the downloaded files using these hashes.
+            Please do not use versions older than 0.4.0
           draft: false
-          # 如果是 Beta 分支，或者版本号包含 _Beta，或者手动勾选了 prerelease，则标记为预发布
+          # If it's Beta branch, or version contains _Beta, or prerelease is manually checked, mark as pre-release
           prerelease: ${{ github.ref == 'refs/heads/Beta' || contains(env.APP_VERSION, '_Beta') || github.event.inputs.prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

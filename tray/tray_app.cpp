@@ -130,13 +130,20 @@ std::string GetLogDirectory() {
 // 从注册表读取安装路径
 std::string GetInstallPathFromRegistry() {
     HKEY hKey;
-    // 尝试从 HKLM 读取
-    LONG result = RegOpenKeyExA(HKEY_LOCAL_MACHINE, 
+    // 首先尝试从 HKCU 读取
+    LONG result = RegOpenKeyExA(HKEY_CURRENT_USER, 
                                  "SOFTWARE\\Capture_Push", 
                                  0, KEY_READ, &hKey);
     
     if (result != ERROR_SUCCESS) {
-        return "";
+        // 如果HKCU读取失败，尝试从HKLM读取（兼容旧版本）
+        result = RegOpenKeyExA(HKEY_LOCAL_MACHINE, 
+                             "SOFTWARE\\Capture_Push", 
+                             0, KEY_READ, &hKey);
+        
+        if (result != ERROR_SUCCESS) {
+            return "";
+        }
     }
     
     // 获取值的大小
@@ -177,9 +184,9 @@ std::string GetCurrentDateString() {
     return oss.str();
 }
 
-// 清理旧日志，限制总大小为 50MB，并删除超过7天的日志
+// 清理旧日志，限制总大小为 10MB，并删除超过7天的日志
 void CleanupOldLogs(const std::string& logDir) {
-    const long long MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB
+    const long long MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB
     const int MAX_DAYS = 7; // 最大保留天数
     std::string searchPath = logDir + "\\*.log*";
     

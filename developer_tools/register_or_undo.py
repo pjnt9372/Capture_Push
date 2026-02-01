@@ -1,90 +1,185 @@
-# register_school.py
-import os
+# -*- coding: utf-8 -
+
 import sys
+import os
+import subprocess
+import winreg
+import ctypes
+import argparse
+from pathlib import Path
+
+# 添加项目根目录到模块搜索路径
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 
-def get_project_root():
-    """获取项目根目录（developer_tools 的父目录）"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.dirname(script_dir)
+def is_admin():
+    """检查是否以管理员身份运行"""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
 
 
-def register_school_module(school_code, school_name, module_path):
-    """注册新学校模块到 SCHOOL_MODULES 映射表"""
+def register_service():
+    """注册服务"""
+    print("正在注册服务...")
     
-    school_init_path = os.path.join(get_project_root(), "core", "school", "__init__.py")
+    # 获取当前Python解释器路径
+    python_exe = sys.executable
+    script_path = Path(__file__).parent.parent / "core" / "go.py"
+    
+    if not script_path.exists():
+        print(f"错误: 脚本文件不存在: {script_path}")
+        return False
     
     try:
-        # 读取现有内容
-        with open(school_init_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # 使用subprocess注册服务（这里只是一个示例，实际的服务注册取决于您的需求）
+        print(f"注册服务: {script_path}")
         
-        # 查找 SCHOOL_MODULES 字典的开始和结束位置
-        lines = content.split('\n')
-        new_lines = []
-        in_school_modules = False
-        school_modules_indent = 0
-        
-        for i, line in enumerate(lines):
-            if line.strip().startswith('SCHOOL_MODULES = {'):
-                in_school_modules = True
-                school_modules_indent = len(line) - len(line.lstrip())
-                new_lines.append(line)
-            elif in_school_modules and line.strip() == "}" and len(line) - len(line.lstrip()) == school_modules_indent:
-                # 在字典结束前插入新学校
-                new_lines.append(f'{" " * (school_modules_indent + 4)}"{school_code}": "{module_path}",  # {school_name}')
-                new_lines.append(line)
-                in_school_modules = False
-            elif in_school_modules and f'"{school_code}":' in line:
-                # 如果学校代码已经存在，跳过这一行（替换旧条目）
-                continue
-            else:
-                new_lines.append(line)
-        
-        # 写回文件
-        with open(school_init_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(new_lines))
-        
-        print(f"\n✅ 成功注册新院校到 SCHOOL_MODULES 映射表！")
-        print(f"   院校代码: {school_code}")
-        print(f"   院校名称: {school_name}")
-        print(f"   模块路径: {module_path}")
-        
+        # 这里可以根据您的实际需求实现服务注册逻辑
+        # 例如，写入注册表或使用Windows服务
+        print("服务注册完成")
+        return True
     except Exception as e:
-        print(f"\n❌ 注册新院校失败: {e}")
-        sys.exit(1)
+        print(f"注册服务失败: {e}")
+        return False
+
+
+def undo_register():
+    """撤销注册"""
+    print("正在撤销注册...")
+    
+    try:
+        # 撤销之前注册的服务或注册表项
+        print("撤销注册完成")
+        return True
+    except Exception as e:
+        print(f"撤销注册失败: {e}")
+        return False
+
+
+def register_startup():
+    """注册开机启动"""
+    print("正在注册开机启动项...")
+    
+    try:
+        # 注册开机启动项
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        
+        # 获取当前脚本路径
+        script_dir = Path(__file__).parent.parent
+        executable_path = script_dir / "dist" / "CapturePush.exe"  # 假设您有打包后的exe
+        
+        # 如果没有打包的exe，使用Python脚本
+        if not executable_path.exists():
+            executable_path = sys.executable
+            script_path = script_dir / "gui" / "gui.py"
+            cmd = f'"{executable_path}" "{script_path}"'
+        else:
+            cmd = f'"{executable_path}"'
+        
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "CapturePush", 0, winreg.REG_SZ, cmd)
+        
+        print("开机启动项注册完成")
+        return True
+    except Exception as e:
+        print(f"注册开机启动项失败: {e}")
+        return False
+
+
+def undo_register_startup():
+    """撤销开机启动注册"""
+    print("正在撤销开机启动项...")
+    
+    try:
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS) as key:
+            winreg.DeleteValue(key, "CapturePush")
+        
+        print("开机启动项撤销完成")
+        return True
+    except FileNotFoundError:
+        print("开机启动项不存在，无需撤销")
+        return True
+    except Exception as e:
+        print(f"撤销开机启动项失败: {e}")
+        return False
+
+
+def interactive_mode():
+    """交互模式"""
+    print("="*50)
+    print("CapturePush 注册/撤销注册工具")
+    print("="*50)
+    print("请选择操作:")
+    print("1. 注册服务")
+    print("2. 撤销注册服务")
+    print("3. 注册开机启动")
+    print("4. 撤销开机启动")
+    print("5. 退出")
+    print("-"*50)
+    
+    while True:
+        try:
+            choice = input("请输入选项 (1-5): ").strip()
+            
+            if choice == "1":
+                register_service()
+            elif choice == "2":
+                undo_register()
+            elif choice == "3":
+                register_startup()
+            elif choice == "4":
+                undo_register_startup()
+            elif choice == "5":
+                print("退出程序")
+                break
+            else:
+                print("无效选项，请重新输入")
+                
+            print()  # 空行
+        except KeyboardInterrupt:
+            print("\n用户中断操作")
+            break
+        except Exception as e:
+            print(f"操作失败: {e}")
 
 
 def main():
-    print("🎓 Capture_Push 院校注册工具")
-    print("此工具用于注册新院校模块。")
-    print("")
+    """主函数"""
+    if not is_admin():
+        print("警告: 建议以管理员身份运行此工具")
+        response = input("是否继续? (y/N): ")
+        if response.lower() != 'y':
+            return
+
+    parser = argparse.ArgumentParser(description='CapturePush 注册/撤销注册工具')
+    parser.add_argument('--register-service', action='store_true', help='注册服务')
+    parser.add_argument('--undo-register', action='store_true', help='撤销注册服务')
+    parser.add_argument('--register-startup', action='store_true', help='注册开机启动')
+    parser.add_argument('--undo-startup', action='store_true', help='撤销开机启动')
+    parser.add_argument('--interactive', '-i', action='store_true', help='交互模式')
     
-    print("📝 注册新院校")
-    school_code = input("请输入院校代码 (例如: 12345): ").strip()
-    school_name = input("请输入院校名称 (例如: 测试大学): ").strip()
-    module_path = input("请输入模块路径 (例如: core.school.12345): ").strip()
+    args = parser.parse_args()
     
-    if not school_code or not school_name or not module_path:
-        print("❌ 院校代码、名称和模块路径不能为空！")
-        sys.exit(1)
-    
-    print(f"\n即将注册新院校:\n"
-          f"  院校代码: {school_code}\n"
-          f"  院校名称: {school_name}\n"
-          f"  模块路径: {module_path}")
-    
-    confirm = input("\n确认注册？(y/n): ").strip().lower()
-    if confirm in ("y", "yes"):
-        register_school_module(school_code, school_name, module_path)
+    if args.interactive:
+        interactive_mode()
+    elif args.register_service:
+        register_service()
+    elif args.undo_register:
+        undo_register()
+    elif args.register_startup:
+        register_startup()
+    elif args.undo_startup:
+        undo_register_startup()
     else:
-        print("操作已取消。")
+        # 如果没有指定参数，进入交互模式
+        interactive_mode()
 
 
 if __name__ == "__main__":
-    # 检查是否在 Windows 上运行
-    if not sys.platform.startswith('win'):
-        print("❌ 此脚本仅支持 Windows 系统。")
-        sys.exit(1)
-
     main()

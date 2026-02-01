@@ -16,10 +16,30 @@ except ImportError:
     from core.config_manager import load_config
 
 # 导入具体的发送器实现
+# 为安装环境提供兼容性支持
+import sys
+import os
+
+# 确保core目录在Python路径中
+core_dir = os.path.dirname(os.path.abspath(__file__))
+if core_dir not in sys.path:
+    sys.path.insert(0, core_dir)
+
 try:
+    # 尝试直接导入（最常见的情况）
     from senders.email_sender import EmailSender
 except ImportError:
-    from core.senders.email_sender import EmailSender
+    try:
+        # 尝试绝对导入
+        from core.senders.email_sender import EmailSender
+    except ImportError:
+        # 创建备用的EmailSender类
+        class EmailSender:
+            def __init__(self):
+                pass
+            def send(self, subject, content):
+                print(f"[WARN] Email发送器不可用")
+                return False
 
 # 初始化日志
 logger = init_logger('push')
@@ -71,12 +91,12 @@ class NotificationSender(ABC):
         pass
 
 
-class NotificationManager:
-    """通知管理器，支持多种推送方式"""
+class PushManager:
+    """推送管理器，支持多种推送方式"""
     
     def __init__(self):
         self.senders = {}
-        logger.info("初始化通知管理器")
+        logger.info("初始化推送管理器")
         # 自动注册所有可用的发送器
         self._register_available_senders()
     
@@ -90,14 +110,20 @@ class NotificationManager:
         
         # 注册飞书推送
         try:
-            from core.senders.feishu_sender import FeishuSender
+            try:
+                from senders.feishu_sender import FeishuSender
+            except ImportError:
+                from core.senders.feishu_sender import FeishuSender
             self.register_sender("feishu", FeishuSender())
         except Exception as e:
             logger.warning(f"注册飞书发送器失败: {e}")
         
         # 注册Server酱推送
         try:
-            from core.senders.serverchan_sender import ServerChanSender
+            try:
+                from senders.serverchan_sender import ServerChanSender
+            except ImportError:
+                from core.senders.serverchan_sender import ServerChanSender
             self.register_sender("serverchan", ServerChanSender())
         except Exception as e:
             logger.warning(f"注册Server酱发送器失败: {e}")
@@ -164,10 +190,105 @@ class NotificationManager:
     def get_available_senders(self):
         """获取可用的推送方式列表"""
         return list(self.senders.keys())
+    
+    def push_grades(self, grades_data, push_method="email"):
+        """
+        推送成绩数据
+        
+        Args:
+            grades_data: 成绩数据
+            push_method: 推送方式，默认为email
+            
+        Returns:
+            bool: 推送是否成功
+        """
+        try:
+            logger.info(f"开始推送成绩数据，总数: {len(grades_data) if isinstance(grades_data, list) else 'N/A'}")
+            
+            # 根据成绩数据类型进行处理
+            if isinstance(grades_data, dict) and 'changed' in grades_data:
+                # 如果是变化的成绩数据
+                if grades_data.get('changed'):
+                    text_content = format_grade_changes(grades_data['changed'])
+                    subject = "成绩有更新"
+                else:
+                    logger.info("没有成绩变化，无需推送")
+                    return True
+            elif isinstance(grades_data, list) and len(grades_data) > 0:
+                # 如果是全部成绩数据
+                text_content = format_all_grades(grades_data)
+                subject = "全部成绩"
+            else:
+                logger.warning("成绩数据为空或格式不正确")
+                return False
+            
+            # 使用指定的推送方式发送
+            success = self.send_notification(push_method, subject, text_content)
+            logger.info(f"成绩推送完成，结果: {'成功' if success else '失败'}")
+            return success
+        
+        except Exception as e:
+            logger.error(f"推送成绩时发生错误: {e}", exc_info=True)
+            return False
+    
+    def push_schedule(self, schedule_data, push_method="email"):
+        """
+        推送课表数据
+        
+        Args:
+            schedule_data: 课表数据
+            push_method: 推送方式，默认为email
+            
+        Returns:
+            bool: 推送是否成功
+        """
+        try:
+            logger.info(f"开始推送课表数据")
+            
+            # 检查课表数据格式
+            if not schedule_data:
+                logger.warning("课表数据为空")
+                return False
+            
+            # 检查是否是完整课表
+            if isinstance(schedule_data, dict) and 'full_schedule' in schedule_data:
+                # 完整学期课表
+                full_schedule = schedule_data['full_schedule']
+                week_count = schedule_data.get('week_count', 20)  # 默认20周
+                text_content = format_full_schedule(full_schedule, week_count)
+                subject = "本学期完整课表"
+                
+            elif isinstance(schedule_data, list):
+                # 按日期分组的课表数据
+                # 假设推送第一个日期的数据（通常是明天的课表）
+                if len(schedule_data) > 0:
+                    # 查找明天的课程安排
+                    from datetime import datetime, timedelta
+                    tomorrow = datetime.now() + timedelta(days=1)
+                    week_num = int(tomorrow.strftime('%W')) - int(datetime.now().replace(month=1, day=1).strftime('%W')) + 1
+                    weekday = tomorrow.weekday() + 1  # 1-7 对应周一到周日
+                    
+                    text_content = format_schedule(schedule_data[0], week_num, weekday, "明日课表")
+                    subject = "明日课表提醒"
+                else:
+                    logger.warning("课表数据为空")
+                    return False
+            else:
+                logger.warning(f"未知的课表数据格式: {type(schedule_data)}")
+                return False
+            
+            # 使用指定的推送方式发送
+            success = self.send_notification(push_method, subject, text_content)
+            logger.info(f"课表推送完成，结果: {'成功' if success else '失败'}")
+            return success
+        
+        except Exception as e:
+            logger.error(f"推送课表时发生错误: {e}", exc_info=True)
+            return False
 
 
-# 全局通知管理器实例
-notification_manager = NotificationManager()
+# 全局推送管理器实例
+push_manager = PushManager()
 
 
 def send_notification(sender_name, subject, content):
@@ -183,7 +304,7 @@ def send_notification(sender_name, subject, content):
         bool: 发送是否成功
     """
     logger.debug(f"调用 send_notification: sender={sender_name}, subject={subject}")
-    return notification_manager.send_notification(sender_name, subject, content)
+    return push_manager.send_notification(sender_name, subject, content)
 
 
 # ==================== 消息格式化函数 ====================
@@ -364,28 +485,28 @@ def format_full_schedule(courses, week_count):
 def send_grade_mail(changed):
     """发送成绩变化通知"""
     text = format_grade_changes(changed)
-    return notification_manager.send_with_active_sender("成绩有更新", text)
+    return push_manager.send_with_active_sender("成绩有更新", text)
 
 
 def send_all_grades_mail(grades):
     """发送全部成绩通知"""
     text = format_all_grades(grades)
-    return notification_manager.send_with_active_sender("全部成绩", text)
+    return push_manager.send_with_active_sender("全部成绩", text)
 
 
 def send_schedule_mail(courses, week, weekday):
     """发送明日课表通知"""
     text = format_schedule(courses, week, weekday, "明日课表")
-    return notification_manager.send_with_active_sender("明日课表提醒", text)
+    return push_manager.send_with_active_sender("明日课表提醒", text)
 
 
 def send_today_schedule_mail(courses, week, weekday):
     """发送今日课表通知"""
     text = format_schedule(courses, week, weekday, "今日课表")
-    return notification_manager.send_with_active_sender("今日课表", text)
+    return push_manager.send_with_active_sender("今日课表", text)
 
 
 def send_full_schedule_mail(courses, week_count):
     """发送完整学期课表通知"""
     text = format_full_schedule(courses, week_count)
-    return notification_manager.send_with_active_sender("本学期完整课表", text)
+    return push_manager.send_with_active_sender("本学期完整课表", text)

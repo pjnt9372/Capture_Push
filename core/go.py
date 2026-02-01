@@ -13,14 +13,14 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from core.push import send_grade_mail, send_schedule_mail, send_today_schedule_mail, send_full_schedule_mail
-from core.school import get_school_module
 from core.config_manager import load_config
+from core.plugins.plugin_manager import get_plugin_manager
 
 # 导入统一配置路径管理（AppData 目录）
-from core.log import get_config_path, get_log_file_path, init_logger, pack_logs
+from core.log import get_config_path, get_log_file_path, get_logger, pack_logs
 
 # 初始化日志
-logger = init_logger('go')
+logger = get_logger('go')
 logger.info("go.py 启动")
 logger.info(f"BASE_DIR: {BASE_DIR}")
 logger.info(f"sys.path: {sys.path[:3]}...")
@@ -44,10 +44,15 @@ def get_current_school_module():
     """根据配置获取当前院校模块"""
     cfg = load_config()
     school_code = cfg.get("account", "school_code", fallback="10546")
-    module = get_school_module(school_code)
+    
+    # 获取插件管理器
+    plugin_manager = get_plugin_manager()
+    
+    # 加载指定院校的插件
+    module = plugin_manager.load_plugin(school_code)
     if not module:
         logger.error(f"找不到院校模块: {school_code}，回退到默认 10546")
-        module = get_school_module("10546")
+        module = plugin_manager.load_plugin("10546")
     return module
 
 
@@ -90,12 +95,51 @@ def fetch_and_push_grades(push=False, force_update=False, push_all=False):
         logger.info(f"账号配置: username={username[:2]}***")
 
         school_mod = get_current_school_module()
+        if not school_mod:
+            logger.error("无法加载学校模块，插件可能存在问题")
+            logger.error("请检查插件是否正确安装")
+            return
+        
         grades = school_mod.fetch_grades(username, password, force_update)
         if not grades:
             logger.error("成绩获取失败")
-            print("❌ 成绩获取失败")
             return
 
+        # 处理插件返回的数据格式
+        if isinstance(grades, dict) and "grades" in grades:
+            # 插件返回的是包含 "grades" 键的字典
+            grades = grades["grades"]
+        
+        # 确保成绩数据格式正确
+        if not isinstance(grades, list):
+            logger.error(f"成绩数据格式错误，期望列表，实际类型: {type(grades)}")
+            return
+        
+        # 转换成绩数据的字段名（如果需要）
+        converted_grades = []
+        for grade in grades:
+            if isinstance(grade, dict):
+                # 如果插件返回的是英文字段，转换为中文字段
+                if "course_name" in grade and "score" in grade:
+                    converted_grade = {
+                        "课程名称": grade["course_name"],
+                        "成绩": grade["score"]
+                    }
+                    # 添加其他可能的字段
+                    if "semester" in grade:
+                        converted_grade["学期"] = grade["semester"]
+                    if "credit" in grade:
+                        converted_grade["学分"] = grade["credit"]
+                    if "course_property" in grade:
+                        converted_grade["课程属性"] = grade["course_property"]
+                    if "course_number" in grade:
+                        converted_grade["课程编号"] = grade["course_number"]
+                    converted_grades.append(converted_grade)
+                else:
+                    # 如果已经是正确的中文字段格式，直接使用
+                    converted_grades.append(grade)
+            
+        grades = converted_grades
         logger.info(f"获取到 {len(grades)} 条成绩记录")
         new_map = {g["课程名称"]: g["成绩"] for g in grades}
         old_map = load_last_grades()
@@ -111,16 +155,15 @@ def fetch_and_push_grades(push=False, force_update=False, push_all=False):
                 all_grades = {course: f"成绩：{score}" for course, score in new_map.items()}
                 logger.debug(f"格式化后的成绩: {all_grades}")
                 send_grade_mail(all_grades)
-                print(f"✅ 已推送所有成绩（{len(new_map)} 条）")
+                logger.info(f"已推送所有成绩（{len(new_map)} 条）")
             elif changed:
                 # 只推送变化的成绩
                 logger.info(f"推送 {len(changed)} 条变化的成绩")
                 logger.debug(f"变化的成绩: {changed}")
                 send_grade_mail(changed)
-                print(f"✅ 已推送 {len(changed)} 条变化的成绩")
+                logger.info(f"已推送 {len(changed)} 条变化的成绩")
             else:
                 logger.info("成绩无变化，不推送")
-                print("ℹ️ 成绩无变化，未推送")
 
         save_last_grades(new_map)
 
@@ -128,10 +171,8 @@ def fetch_and_push_grades(push=False, force_update=False, push_all=False):
         if not push:
             if changed:
                 logger.info("成绩有更新")
-                print("✅ 成绩有更新")
             else:
                 logger.info("成绩无变化")
-                print("ℹ️ 成绩无变化")
     except Exception as e:
         logger.error(f"fetch_and_push_grades 异常: {e}", exc_info=True)
         raise
@@ -206,10 +247,46 @@ def fetch_and_push_today_schedule(force_update=False):
                     return
 
         school_mod = get_current_school_module()
+        if not school_mod:
+            logger.error("无法加载学校模块，插件可能存在问题")
+            return
+        
         schedule = school_mod.fetch_course_schedule(username, password, force_update)
         if not schedule:
             logger.error("课表获取失败")
             return
+        
+        # 处理插件返回的数据格式
+        if isinstance(schedule, dict) and "schedule" in schedule:
+            # 插件返回的是包含 "schedule" 键的字典
+            schedule = schedule["schedule"]
+        
+        # 确保课表数据格式正确
+        if not isinstance(schedule, list):
+            logger.error(f"课表数据格式错误，期望列表，实际类型: {type(schedule)}")
+            return
+        
+        # 转换课表数据的字段名（如果需要）
+        converted_schedule = []
+        for course in schedule:
+            if isinstance(course, dict):
+                # 如果插件返回的是英文字段，转换为中文字段
+                if "course_name" in course and "week_day" in course and "period_start" in course:
+                    converted_course = {
+                        "课程名称": course["course_name"],
+                        "星期": course["week_day"],
+                        "开始小节": course["period_start"],
+                        "结束小节": course.get("period_end", course["period_start"]),
+                        "教师": course.get("teacher", ""),
+                        "教室": course.get("classroom", ""),
+                        "周次列表": [course.get("weeks", "全学期")]
+                    }
+                    converted_schedule.append(converted_course)
+                else:
+                    # 如果已经是正确的中文字段格式，直接使用
+                    converted_schedule.append(course)
+        
+        schedule = converted_schedule
 
         # 合并手动修改的课表
         manual_data = load_manual_schedule()
@@ -312,10 +389,46 @@ def fetch_and_push_tomorrow_schedule(force_update=False):
                     return
 
         school_mod = get_current_school_module()
+        if not school_mod:
+            logger.error("无法加载学校模块，插件可能存在问题")
+            return
+        
         schedule = school_mod.fetch_course_schedule(username, password, force_update)
         if not schedule:
             logger.error("课表获取失败")
             return
+        
+        # 处理插件返回的数据格式
+        if isinstance(schedule, dict) and "schedule" in schedule:
+            # 插件返回的是包含 "schedule" 键的字典
+            schedule = schedule["schedule"]
+        
+        # 确保课表数据格式正确
+        if not isinstance(schedule, list):
+            logger.error(f"课表数据格式错误，期望列表，实际类型: {type(schedule)}")
+            return
+        
+        # 转换课表数据的字段名（如果需要）
+        converted_schedule = []
+        for course in schedule:
+            if isinstance(course, dict):
+                # 如果插件返回的是英文字段，转换为中文字段
+                if "course_name" in course and "week_day" in course and "period_start" in course:
+                    converted_course = {
+                        "课程名称": course["course_name"],
+                        "星期": course["week_day"],
+                        "开始小节": course["period_start"],
+                        "结束小节": course.get("period_end", course["period_start"]),
+                        "教师": course.get("teacher", ""),
+                        "教室": course.get("classroom", ""),
+                        "周次列表": [course.get("weeks", "全学期")]
+                    }
+                    converted_schedule.append(converted_course)
+                else:
+                    # 如果已经是正确的中文字段格式，直接使用
+                    converted_schedule.append(course)
+        
+        schedule = converted_schedule
 
         # 合并手动修改的课表
         manual_data = load_manual_schedule()
@@ -399,10 +512,46 @@ def fetch_and_push_next_week_schedule(force_update=False):
                     return
 
         school_mod = get_current_school_module()
+        if not school_mod:
+            logger.error("无法加载学校模块，插件可能存在问题")
+            return
+        
         schedule = school_mod.fetch_course_schedule(username, password, force_update)
         if not schedule:
             logger.error("课表获取失败")
             return
+        
+        # 处理插件返回的数据格式
+        if isinstance(schedule, dict) and "schedule" in schedule:
+            # 插件返回的是包含 "schedule" 键的字典
+            schedule = schedule["schedule"]
+        
+        # 确保课表数据格式正确
+        if not isinstance(schedule, list):
+            logger.error(f"课表数据格式错误，期望列表，实际类型: {type(schedule)}")
+            return
+        
+        # 转换课表数据的字段名（如果需要）
+        converted_schedule = []
+        for course in schedule:
+            if isinstance(course, dict):
+                # 如果插件返回的是英文字段，转换为中文字段
+                if "course_name" in course and "week_day" in course and "period_start" in course:
+                    converted_course = {
+                        "课程名称": course["course_name"],
+                        "星期": course["week_day"],
+                        "开始小节": course["period_start"],
+                        "结束小节": course.get("period_end", course["period_start"]),
+                        "教师": course.get("teacher", ""),
+                        "教室": course.get("classroom", ""),
+                        "周次列表": [course.get("weeks", "全学期")]
+                    }
+                    converted_schedule.append(converted_course)
+                else:
+                    # 如果已经是正确的中文字段格式，直接使用
+                    converted_schedule.append(course)
+        
+        schedule = converted_schedule
 
         # 加载手动修改
         manual_data = load_manual_schedule()
@@ -491,6 +640,38 @@ def fetch_and_push_full_semester_schedule(force_update=False):
         if not schedule:
             logger.error("课表获取失败")
             return
+        
+        # 处理插件返回的数据格式
+        if isinstance(schedule, dict) and "schedule" in schedule:
+            # 插件返回的是包含 "schedule" 键的字典
+            schedule = schedule["schedule"]
+        
+        # 确保课表数据格式正确
+        if not isinstance(schedule, list):
+            logger.error(f"课表数据格式错误，期望列表，实际类型: {type(schedule)}")
+            return
+        
+        # 转换课表数据的字段名（如果需要）
+        converted_schedule = []
+        for course in schedule:
+            if isinstance(course, dict):
+                # 如果插件返回的是英文字段，转换为中文字段
+                if "course_name" in course and "week_day" in course and "period_start" in course:
+                    converted_course = {
+                        "课程名称": course["course_name"],
+                        "星期": course["week_day"],
+                        "开始小节": course["period_start"],
+                        "结束小节": course.get("period_end", course["period_start"]),
+                        "教师": course.get("teacher", ""),
+                        "教室": course.get("classroom", ""),
+                        "周次列表": [course.get("weeks", "全学期")]
+                    }
+                    converted_schedule.append(converted_course)
+                else:
+                    # 如果已经是正确的中文字段格式，直接使用
+                    converted_schedule.append(course)
+        
+        schedule = converted_schedule
 
         # 加载手动修改
         manual_data = load_manual_schedule()
@@ -615,6 +796,10 @@ def main():
         logger.info("执行: fetch_course_schedule")
         cfg = load_config()
         school_mod = get_current_school_module()
+        if not school_mod:
+            logger.error("无法加载学校模块，插件可能存在问题")
+            logger.error("请检查插件是否正确安装")
+            return
         school_mod.fetch_course_schedule(cfg.get("account", "username"), cfg.get("account", "password"), force_update=args.force)
     if args.push_schedule:
         logger.info("执行: fetch_and_push_today_schedule(兼容模式)")
@@ -635,9 +820,9 @@ def main():
         logger.info("执行: pack_logs")
         report_path = pack_logs()
         if report_path:
-            print(f"✅ 日志报告已生成: {report_path}")
+            logger.info(f"日志报告已生成: {report_path}")
         else:
-            print("❌ 日志报告生成失败")
+            logger.error("日志报告生成失败")
     if args.check_update:
         logger.info("执行: check_update")
         from core.updater import Updater
@@ -645,13 +830,13 @@ def main():
         result = updater.check_update()
         if result:
             version, data = result
-            print(f"发现新版本: {version}")
-            print(f"当前版本: {updater.current_version}")
+            logger.info(f"发现新版本: {version}")
+            logger.info(f"当前版本: {updater.current_version}")
             # 返回更新信息给调用者（GUI）
             import json
             print("UPDATE_INFO:" + json.dumps({"version": version, "has_update": True}, ensure_ascii=False))
         else:
-            print("当前已是最新版本")
+            logger.info("当前已是最新版本")
             import json
             print("UPDATE_INFO:" + json.dumps({"has_update": False}, ensure_ascii=False))
     
