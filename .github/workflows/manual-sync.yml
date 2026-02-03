@@ -15,46 +15,56 @@ jobs:
       - name: 🛎️ 检出源仓库
         uses: actions/checkout@v4
 
-      # 第二步：检出目标仓库 (关键修复点)
+      # 第二步：检出目标仓库
       - name: 🗂️ 检出目标仓库
         uses: actions/checkout@v4
         with:
-          # 👇 指定目标仓库地址
           repository: pjnt9372/Capture_Push_Plugin
-          # 👇 指定分支
           ref: master
-          # 👇 将目标仓库克隆到 local-target 目录
           path: target-repo
-          # 👇 核心修复：显式传入 Token 进行认证
-          token: ${{ secrets.ACCESS_TOKEN }}
+          token: $
 
-      # 第三步：复制文件
-      - name: 📂 复制文件到目标目录
+      # 第三步：核心操作 (复制 + 推送)
+      - name: 🚀 执行同步与推送
+        env:
+          # 将 Token 暴露给脚本作为环境变量
+          ACCESS_TOKEN: $
         run: |
-          # 检查源文件夹是否存在
+          # 1. 检查源文件夹
           if [ ! -d "developer_space" ]; then
             echo "错误：源仓库中不存在 developer_space 文件夹"
             exit 1
           fi
-          
-          # 清空目标目录下的 developer_space 文件夹内容
-          rm -rf target-repo/developer_space/*
-          
-          # 将源仓库的文件复制到目标目录的 developer_space 文件夹中
-          cp -r developer_space/* target-repo/developer_space/
-          
-          # 查看复制了哪些文件（用于调试）
-          echo "准备推送的文件列表："
-          ls -la target-repo/developer_space/
 
-      # 第四步：推送回目标仓库
-      - name: 🚀 推送更新
-        uses: ad-m/github-push-action@master
-        with:
-          # 👇 指向我们刚才修改的 target-repo 目录
-          directory: target-repo
-          # 👇 推送到目标仓库的 master 分支
-          branch: master
-          # 👇 使用 Token 推送
-          token: ${{ secrets.ACCESS_TOKEN }}
-          commit_message: Update developer_space files
+          # 2. 进入目标仓库目录
+          cd target-repo || exit 1
+
+          # 3. 配置 Git 安全目录（防止权限报错）
+          git config --local --add safe.directory .
+
+          # 4. 设置 Git 用户信息（必须，否则提交失败）
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 5. 拉取最新代码（防止冲突）
+          # --rebase 确保本地修改在最新代码之上
+          git pull --rebase origin master
+
+          # 6. 回到工作区，复制文件（覆盖目标文件夹内容）
+          # 注意：这里使用绝对路径或相对路径确保准确
+          rm -rf developer_space/*
+          cp -r ../developer_space/* developer_space/
+
+          # 7. 检查是否有变更
+          if git diff-index --quiet HEAD --; then
+            echo "ℹ️ 无需更新：developer_space 文件夹内容没有变化。"
+            exit 0
+          fi
+
+          # 8. 提交更改
+          git add .
+          git commit -m "Update developer_space files"
+
+          # 9. 推送回目标仓库
+          # 使用 Token 进行 HTTPS 推送
+          git push https://$ACCESS_TOKEN@github.com/pjnt9372/Capture_Push_Plugin.git master
