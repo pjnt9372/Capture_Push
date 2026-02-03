@@ -66,7 +66,12 @@ class BasicTab(QWidget):
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("请输入密码")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        # 连接文本改变信号，用于处理用户输入新密码的情况
+        self.password_input.textChanged.connect(self._on_password_text_changed)
         school_account_layout.addRow("密码:", self.password_input)
+        
+        # 存储实际密码值，用于保存时使用
+        self._actual_password = ""
         
         # 提示标签
         self.plugin_hint_label = QLabel("提示: 显示已安装的院校模块。如未显示新安装的插件，可点击刷新按钮更新列表")
@@ -81,6 +86,16 @@ class BasicTab(QWidget):
         self.load_config()
         # 然后刷新院校列表并设置默认选择
         self.refresh_available_plugins()
+    
+    def _on_password_text_changed(self, text):
+        """处理密码输入框文本变化"""
+        # 当用户开始输入新密码时，清除占位符（如果有的话）
+        if text:  # 如果有输入内容
+            self.password_input.setPlaceholderText("")
+        elif not self._actual_password:  # 如果没有输入内容，且没有保存的密码
+            self.password_input.setPlaceholderText("请输入密码")  # 恢复原始占位符
+        else:  # 如果没有输入内容，但有保存的密码
+            self.password_input.setPlaceholderText("••••••••")  # 显示隐藏密码占位符
     
     def on_school_selected(self, text):
         """当用户选择院校时调用此方法"""
@@ -162,7 +177,13 @@ class BasicTab(QWidget):
                 # 加载密码
                 try:
                     password = config.get('account', 'password', fallback='')
-                    self.password_input.setText(password)
+                    self._actual_password = password  # 保存实际密码值
+                    # 如果密码存在，则显示占位符（如星号）而不是实际密码
+                    if password:
+                        self.password_input.setPlaceholderText("••••••••")  # 显示隐藏密码的占位符
+                        # 设置文本为空，只显示占位符
+                        self.password_input.setText("")
+                    # 不在UI中显示实际密码
                 except:
                     pass
                 
@@ -184,7 +205,13 @@ class BasicTab(QWidget):
                 
                 # 加载密码
                 password = config.get('account', {}).get('password', '')
-                self.password_input.setText(password)
+                self._actual_password = password  # 保存实际密码值
+                # 如果密码存在，则显示占位符（如星号）而不是实际密码
+                if password:
+                    self.password_input.setPlaceholderText("••••••••")  # 显示隐藏密码的占位符
+                    # 设置文本为空，只显示占位符
+                    self.password_input.setText("")
+                # 不在UI中显示实际密码
                 
                 # 加载学校代码（暂存，稍后在refresh_available_plugins中设置）
                 self._saved_school_code = config.get('account', {}).get('school_code', '')
@@ -207,7 +234,13 @@ class BasicTab(QWidget):
                 config.set('account', 'username', self.student_id_input.text())
                 
                 # 保存密码
-                config.set('account', 'password', self.password_input.text())
+                # 如果密码输入框为空，则使用之前保存的密码值，否则使用当前输入的值
+                current_password = self.password_input.text()
+                if not current_password:  # 如果当前输入为空，则使用原密码
+                    current_password = self._actual_password
+                else:  # 否则更新实际密码值
+                    self._actual_password = current_password
+                config.set('account', 'password', current_password)
                 
                 # 保存学校代码
                 school_code = self.school_selector_combo.currentData()
@@ -224,7 +257,13 @@ class BasicTab(QWidget):
                 self.config_manager['account']['username'] = self.student_id_input.text()
                 
                 # 保存密码
-                self.config_manager['account']['password'] = self.password_input.text()
+                # 如果密码输入框为空，则使用之前保存的密码值，否则使用当前输入的值
+                current_password = self.password_input.text()
+                if not current_password:  # 如果当前输入为空，则使用原密码
+                    current_password = self._actual_password
+                else:  # 否则更新实际密码值
+                    self._actual_password = current_password
+                self.config_manager['account']['password'] = current_password
                 
                 # 保存学校代码
                 school_code = self.school_selector_combo.currentData()
