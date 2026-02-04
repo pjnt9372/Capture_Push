@@ -399,6 +399,85 @@ class ScheduleViewerWindow(QWidget):
             QApplication.restoreOverrideCursor()
             if sender: sender.setEnabled(True)
 
+    def merge_consecutive_courses(self, schedule):
+        """智能合并同一课程的连续时段
+        
+        Args:
+            schedule: 解析出来的课表数据列表
+            
+        Returns:
+            合并后的课表数据列表
+        
+        注意：
+        1. 按完整课程标识分组（星期+课程名称+教师+教室+周次列表）
+        2. 只对同一周次内的连续课程进行合并
+        3. 不同周次的课程保持独立，避免错误合并
+        """
+        if not schedule:
+            return schedule
+            
+        # 按完整标识分组（包含周次信息）
+        course_groups = {}
+        
+        for course in schedule:
+            # 创建完整分组键：星期+课程名称+教师+教室+周次列表
+            weeks_list = sorted(course.get("周次列表", []))
+            weeks_key = str(weeks_list) if weeks_list else "[]"
+            
+            key = (
+                course.get("星期", 0),
+                course.get("课程名称", ""),
+                course.get("教师", ""),
+                course.get("教室", ""),
+                weeks_key  # 关键：包含周次信息防止跨周次合并
+            )
+            
+            if key not in course_groups:
+                course_groups[key] = []
+            course_groups[key].append(course)
+        
+        # 对每个分组内的课程进行连续合并
+        merged_schedule = []
+        
+        for group_key, courses in course_groups.items():
+            # 按开始节次排序
+            courses.sort(key=lambda x: x.get("开始小节", 0))
+            
+            # 连续合并算法
+            i = 0
+            while i < len(courses):
+                current_course = courses[i]
+                start_period = current_course.get("开始小节", 0)
+                end_period = current_course.get("结束小节", 0)
+                
+                # 查找可以合并的连续课程
+                j = i + 1
+                while j < len(courses):
+                    next_course = courses[j]
+                    # 如果下一课程紧接当前课程（开始节次 = 当前结束节次 + 1）
+                    if next_course.get("开始小节", 0) == end_period + 1:
+                        end_period = next_course.get("结束小节", 0)
+                        j += 1
+                    else:
+                        break
+                
+                # 创建合并后的课程记录
+                merged_course = {
+                    "星期": current_course.get("星期", 0),
+                    "开始小节": start_period,
+                    "结束小节": end_period,
+                    "课程名称": current_course.get("课程名称", ""),
+                    "教师": current_course.get("教师", ""),
+                    "教室": current_course.get("教室", ""),
+                    "周次列表": current_course.get("周次列表", [])
+                }
+                merged_schedule.append(merged_course)
+                
+                # 跳过已合并的课程
+                i = j
+        
+        return merged_schedule
+    
     def load_data(self):
         try:
             # 重新加载配置以获取最新的时间设置
@@ -438,6 +517,10 @@ class ScheduleViewerWindow(QWidget):
                     # 验证数据格式 - 插件应返回课表字典列表
                     if not isinstance(parsed_schedule, list):
                         raise TypeError(f"插件parse_schedule应返回列表，实际返回类型: {type(parsed_schedule).__name__}")
+                    
+                    # 对解析的课表数据进行智能合并处理
+                    # 只合并同一周次内的连续课程，避免跨周次错误合并
+                    parsed_schedule = self.merge_consecutive_courses(parsed_schedule)
                 else:
                     QMessageBox.warning(self, "警告", f"找不到院校模块: {school_code}")
             
@@ -445,7 +528,7 @@ class ScheduleViewerWindow(QWidget):
             for r in range(self.total_classes):
                 for c in range(1, 8):
                     self.table.setCellWidget(r, c, None)
-                    self.table.setSpan(r, c, 1, 1)
+                    # 不再重置span，因为默认就是(1,1)，避免警告
 
             # 3. 准备合并：记录已占用的单元格，手动修改优先
             occupied = set()
@@ -472,8 +555,8 @@ class ScheduleViewerWindow(QWidget):
                     block = CourseBlock(name, room, teacher, modified_color, is_manual=True)
                     
                     actual_span = min(row_span, self.total_classes - row)
-                    # 只有当跨越多个单元格时才设置span，避免单个单元格span警告
-                    if actual_span > 1:
+                    # 确保span是正整数且大于1
+                    if isinstance(actual_span, int) and actual_span > 1:
                         self.table.setSpan(row, col, actual_span, 1)
                     self.table.setCellWidget(row, col, block)
                     
@@ -520,8 +603,8 @@ class ScheduleViewerWindow(QWidget):
                         color = self.get_color(name)
                         # 自动解析的课程保持原色，手动添加的课程使用加深的颜色和虚线边框
                         block = CourseBlock(name, room, teacher, color, is_manual=False)
-                        # 只有当跨越多个单元格时才设置span，避免单个单元格span警告
-                        if row_span > 1:
+                        # 确保span是正整数且大于1
+                        if isinstance(row_span, int) and row_span > 1:
                             self.table.setSpan(row, col, row_span, 1)
                         self.table.setCellWidget(row, col, block)
                         for r in range(row, row + row_span):
