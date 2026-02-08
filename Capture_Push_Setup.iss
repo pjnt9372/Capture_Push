@@ -51,6 +51,7 @@ Source: "core\go.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\log.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\push.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\updater.py"; DestDir: "{app}\core"; Flags: ignoreversion
+Source: "core\schedule_linearizer.py"; DestDir: "{app}\core"; Flags: ignoreversion
 Source: "core\utils\*"; DestDir: "{app}\core\utils"; Flags: ignoreversion recursesubdirs
 Source: "gui\*"; DestDir: "{app}\gui"; Flags: ignoreversion recursesubdirs
 Source: "resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs
