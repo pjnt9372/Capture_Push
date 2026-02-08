@@ -23,6 +23,7 @@ app.log
 tray/.vs/
 tray/out/
 tray/build/
+Capture_Push_Plugin/
 
 # Executables
 *.exe

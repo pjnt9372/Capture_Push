@@ -15,6 +15,7 @@ if str(BASE_DIR) not in sys.path:
 from core.push import send_grade_mail, send_schedule_mail, send_today_schedule_mail, send_full_schedule_mail
 from core.config_manager import load_config
 from core.plugins.plugin_manager import get_plugin_manager
+from core.schedule_linearizer import linearize_schedule, save_linear_schedule, format_linear_schedule_for_display
 
 # 导入统一配置路径管理（AppData 目录）
 from core.log import get_config_path, get_log_file_path, get_logger, pack_logs
@@ -800,7 +801,35 @@ def main():
             logger.error("无法加载学校模块，插件可能存在问题")
             logger.error("请检查插件是否正确安装")
             return
-        school_mod.fetch_course_schedule(cfg.get("account", "username"), cfg.get("account", "password"), force_update=args.force)
+        
+        # 获取课表数据
+        schedule_data = school_mod.fetch_course_schedule(
+            cfg.get("account", "username"), 
+            cfg.get("account", "password"), 
+            force_update=args.force
+        )
+        
+        if schedule_data:
+            logger.info(f"成功获取课表数据，共 {len(schedule_data)} 条记录")
+            
+            # 线性化处理并保存JSON文件
+            try:
+                from core.schedule_linearizer import linearize_schedule, save_linear_schedule
+                
+                # 获取学期开始日期（可选）
+                first_monday = cfg.get("semester", "first_monday", fallback=None)
+                if first_monday:
+                    linear_data = linearize_schedule(schedule_data, first_monday)
+                else:
+                    linear_data = linearize_schedule(schedule_data)
+                
+                # 保存线性化数据
+                save_path = save_linear_schedule(linear_data, "linear_schedule.json")
+                logger.info(f"线性化课表已保存到: {save_path}")
+            except Exception as e:
+                logger.error(f"线性化处理失败: {e}")
+        else:
+            logger.error("课表获取失败")
     if args.push_schedule:
         logger.info("执行: fetch_and_push_today_schedule(兼容模式)")
         fetch_and_push_today_schedule(force_update=args.force)

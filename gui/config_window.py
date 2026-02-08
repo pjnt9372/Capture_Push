@@ -244,14 +244,32 @@ class ConfigWindow(QMainWindow):
                     # 执行下载更新
                     installer_path = updater.download_update(release_data)
                     if installer_path:
-                        # 启动安装程序
-                        success = updater.install_update(installer_path)
-                        if success:
-                            from PySide6.QtWidgets import QMessageBox
-                            QMessageBox.information(self, "更新", "更新已启动安装！")
+                        # 准备安装包并提示用户确认
+                        need_install, prepared_path = updater.prepare_and_prompt_install(installer_path, "更新")
+                        if need_install:
+                            confirm_reply = QMessageBox.question(
+                                self,
+                                "确认安装",
+                                f"更新包已准备就绪: {prepared_path}\n点击OK后将退出当前程序并启动安装程序。\n是否继续？",
+                                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+                            )
+                            if confirm_reply == QMessageBox.StandardButton.Ok:
+                                # 用户确认，启动安装程序并退出当前程序
+                                success = updater.install_update(prepared_path)
+                                if success:
+                                    from PySide6.QtWidgets import QMessageBox
+                                    QMessageBox.information(self, "更新", "正在启动安装程序，程序即将退出...")
+                                    # 关闭当前窗口
+                                    self.close()
+                                else:
+                                    from PySide6.QtWidgets import QMessageBox
+                                    QMessageBox.critical(self, "错误", "启动安装程序失败！")
+                            else:
+                                from PySide6.QtWidgets import QMessageBox
+                                QMessageBox.information(self, "取消", f"更新包已保存: {prepared_path}\n您可以稍后手动运行安装程序。")
                         else:
                             from PySide6.QtWidgets import QMessageBox
-                            QMessageBox.critical(self, "错误", "启动安装程序失败！")
+                            QMessageBox.critical(self, "错误", "准备更新包失败！")
                     else:
                         from PySide6.QtWidgets import QMessageBox
                         QMessageBox.critical(self, "错误", "下载更新失败！")
@@ -335,22 +353,32 @@ class ConfigWindow(QMainWindow):
             installer_path = updater.repair_installation()
             
             if installer_path:
-                from PySide6.QtWidgets import QMessageBox
-                reply = QMessageBox.question(
-                    self,
-                    "确认安装",
-                    f"修复包已准备就绪: {installer_path}\n是否立即运行安装程序进行修复？",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    # 启动安装程序进行修复
-                    success = updater.install_update(installer_path, silent=False)
-                    if success:
-                        from PySide6.QtWidgets import QMessageBox
-                        QMessageBox.information(self, "修复", "修复安装已启动！")
+                # 验证安装包完整性
+                if updater.verify_existing_installer(installer_path):
+                    from PySide6.QtWidgets import QMessageBox
+                    reply = QMessageBox.question(
+                        self,
+                        "确认安装",
+                        f"修复包已验证通过: {installer_path}\n点击OK后将退出当前程序并启动安装程序进行修复。\n是否继续？",
+                        QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel
+                    )
+                    if reply == QMessageBox.StandardButton.Ok:
+                        # 启动安装程序进行修复并退出当前程序
+                        success = updater.install_update(installer_path, silent=False)
+                        if success:
+                            from PySide6.QtWidgets import QMessageBox
+                            QMessageBox.information(self, "修复", "正在启动修复安装程序，程序即将退出...")
+                            # 关闭当前窗口
+                            self.close()
+                        else:
+                            from PySide6.QtWidgets import QMessageBox
+                            QMessageBox.critical(self, "错误", "启动安装程序失败！")
                     else:
                         from PySide6.QtWidgets import QMessageBox
-                        QMessageBox.critical(self, "错误", "启动安装程序失败！")
+                        QMessageBox.information(self, "取消", f"修复包已验证通过: {installer_path}\n您可以稍后手动运行安装程序进行修复。")
+                else:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.critical(self, "错误", "修复包完整性验证失败！")
             else:
                 from PySide6.QtWidgets import QMessageBox
                 QMessageBox.critical(self, "错误", "准备修复包失败！")

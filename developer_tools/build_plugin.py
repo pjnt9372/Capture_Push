@@ -30,14 +30,18 @@ def build_plugin(school_code, output_dir=".", plugin_dir=None):
     
     Args:
         school_code: 学校代码
-        output_dir: 输出目录
-        plugin_dir: 插件源目录，默认为 developer_space/[school_code]
+        output_dir: 输出目录，默认为 Capture_Push_Plugin/build
+        plugin_dir: 插件源目录，默认为 Capture_Push_Plugin/[school_code]
     
     Returns:
         ZIP文件路径和SHA256校验和
     """
     if plugin_dir is None:
-        plugin_dir = Path("developer_space") / school_code
+        plugin_dir = Path("Capture_Push_Plugin") / school_code
+    
+    # 设置默认输出目录为 Capture_Push_Plugin/build
+    if output_dir == ".":
+        output_dir = Path("Capture_Push_Plugin") / "build"
     
     plugin_dir = Path(plugin_dir)
     
@@ -82,7 +86,7 @@ def build_plugin(school_code, output_dir=".", plugin_dir=None):
 
 
 def update_plugins_index(school_code, school_name, sha256, download_url, contributor, 
-                       plugins_index_path="plugins_index.json"):
+                       plugins_index_path="Capture_Push_Plugin/plugins_index.json"):
     """
     更新插件索引文件
     
@@ -148,7 +152,7 @@ def main():
     school_name = input("请输入学校名称 (如: 某某大学): ").strip()
     contributor = input("请输入贡献者用户名: ").strip()
     
-    plugin_dir_input = input("请输入插件源目录 (直接回车使用默认: developer_space/[学校代码]): ").strip()
+    plugin_dir_input = input("请输入插件源目录 (直接回车使用默认: Capture_Push_Plugin/[学校代码]): ").strip()
     plugin_dir = plugin_dir_input if plugin_dir_input else None
     
     try:

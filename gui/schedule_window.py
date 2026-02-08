@@ -11,14 +11,18 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
-# 动态获取基础目录和配置路径
+# 定义项目根目录
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 导入日志模块和配置管理
 try:
-    from log import get_config_path, get_log_file_path
+    from log import get_config_path, get_log_file_path, get_logger
     from config_manager import load_config
+    logger = get_logger('schedule_window')
 except ImportError:
-    from core.log import get_config_path, get_log_file_path
+    from core.log import get_config_path, get_log_file_path, get_logger
     from core.config_manager import load_config
+    logger = get_logger('schedule_window')
 
 # 使用插件管理器获取学校模块
 try:
@@ -35,9 +39,19 @@ except ImportError:
     from gui.custom_widgets import CourseBlock
     from gui.dialogs import CourseEditDialog
 
+# 导入线性化模块
+try:
+    from core.schedule_linearizer import load_linear_schedule
+    LINEARIZER_AVAILABLE = True
+except ImportError:
+    LINEARIZER_AVAILABLE = False
+    load_linear_schedule = None
+
 CONFIG_FILE = str(get_config_path())
 APPDATA_DIR = get_log_file_path('gui').parent
 MANUAL_SCHEDULE_FILE = APPDATA_DIR / "manual_schedule.json"
+# 修正线性化JSON文件路径
+LINEAR_SCHEDULE_FILE = Path.home() / "AppData" / "Local" / "Capture_Push" / "linear_schedule.json"
 
 def get_current_school_code():
     """从配置文件中获取当前院校代码"""
@@ -258,31 +272,9 @@ class ScheduleViewerWindow(QWidget):
         if manual_key in manual_data:
             existing_data = manual_data[manual_key]
         else:
-            # 如果没有手动修改过，尝试查找自动解析的课程数据
-            schedule_html_file = APPDATA_DIR / "schedule.html"
-            if schedule_html_file.exists():
-                with open(schedule_html_file, "r", encoding="utf-8") as f:
-                    html = f.read()
-                
-                school_code = get_current_school_code()
-                school_mod = get_school_module(school_code)
-                if school_mod:
-                    parsed_schedule = school_mod.parse_schedule(html)
-                    # 查找对应位置的自动解析课程
-                    for s in parsed_schedule:
-                        day_idx = s.get("星期", 0)
-                        start = s.get("开始小节", 0)
-                        
-                        if day_idx == col and start == (row + 1):
-                            # 找到匹配的自动解析课程
-                            existing_data = {
-                                "课程名称": s.get("课程名称", ""),
-                                "教室": s.get("教室", ""),
-                                "教师": s.get("教师", ""),
-                                "上课周次": self.format_weeks_list(s.get("周次列表", [])),
-                                "row_span": s.get("结束小节", start) - start + 1
-                            }
-                            break
+            # 如果没有手动修改过，现在只使用线性化JSON数据
+            # 不再从HTML文件中查找自动解析的课程数据
+            existing_data = {}
         
         self.current_editing_pos = (row, col)
         self.edit_dialog = CourseEditDialog(self, existing_data)
@@ -363,8 +355,8 @@ class ScheduleViewerWindow(QWidget):
                                    QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             try:
-                schedule_html = APPDATA_DIR / "schedule.html"
-                if schedule_html.exists(): schedule_html.unlink()
+                # 只清除线性化JSON文件和手动修改数据
+                if LINEAR_SCHEDULE_FILE.exists(): LINEAR_SCHEDULE_FILE.unlink()
                 if MANUAL_SCHEDULE_FILE.exists(): MANUAL_SCHEDULE_FILE.unlink()
                 QMessageBox.information(self, "成功", "课表数据已清除。")
                 self.load_data()
@@ -391,14 +383,275 @@ class ScheduleViewerWindow(QWidget):
             subprocess.Popen([py_exe, go_script, "--fetch-schedule", "--force"], 
                             creationflags=CREATE_NO_WINDOW).wait()
             
+            # 刷新完成后重新加载数据（包括线性化JSON）
             self.load_data()
-            QMessageBox.information(self, "刷新完成", "课表数据已从网络同步。")
+            QMessageBox.information(self, "刷新完成", "课表数据已从网络同步并更新线性化JSON文件。")
         except Exception as e:
             QMessageBox.critical(self, "刷新失败", f"无法执行刷新脚本：{e}")
         finally:
             QApplication.restoreOverrideCursor()
             if sender: sender.setEnabled(True)
 
+    def merge_consecutive_courses(self, schedule):
+        """智能合并同一课程的连续时段
+        
+        Args:
+            schedule: 解析出来的课表数据列表
+            
+        Returns:
+            合并后的课表数据列表
+        
+        注意：
+        1. 按完整课程标识分组（星期+课程名称+教师+教室+周次列表）
+        2. 只对同一周次内的连续课程进行合并
+        3. 不同周次的课程保持独立，避免错误合并
+        """
+        if not schedule:
+            return schedule
+            
+        # 按完整标识分组（包含周次信息）
+        course_groups = {}
+        
+        for course in schedule:
+            # 创建完整分组键：星期+课程名称+教师+教室+周次列表
+            weeks_list = sorted(course.get("周次列表", []))
+            weeks_key = str(weeks_list) if weeks_list else "[]"
+            
+            key = (
+                course.get("星期", 0),
+                course.get("课程名称", ""),
+                course.get("教师", ""),
+                course.get("教室", ""),
+                weeks_key  # 关键：包含周次信息防止跨周次合并
+            )
+            
+            if key not in course_groups:
+                course_groups[key] = []
+            course_groups[key].append(course)
+        
+        # 对每个分组内的课程进行连续合并
+        merged_schedule = []
+        
+        for group_key, courses in course_groups.items():
+            # 按开始节次排序
+            courses.sort(key=lambda x: x.get("开始小节", 0))
+            
+            # 连续合并算法
+            i = 0
+            while i < len(courses):
+                current_course = courses[i]
+                start_period = current_course.get("开始小节", 0)
+                end_period = current_course.get("结束小节", 0)
+                
+                # 查找可以合并的连续课程
+                j = i + 1
+                while j < len(courses):
+                    next_course = courses[j]
+                    # 如果下一课程紧接当前课程（开始节次 = 当前结束节次 + 1）
+                    if next_course.get("开始小节", 0) == end_period + 1:
+                        end_period = next_course.get("结束小节", 0)
+                        j += 1
+                    else:
+                        break
+                
+                # 创建合并后的课程记录
+                merged_course = {
+                    "星期": current_course.get("星期", 0),
+                    "开始小节": start_period,
+                    "结束小节": end_period,
+                    "课程名称": current_course.get("课程名称", ""),
+                    "教师": current_course.get("教师", ""),
+                    "教室": current_course.get("教室", ""),
+                    "周次列表": current_course.get("周次列表", [])
+                }
+                merged_schedule.append(merged_course)
+                
+                # 跳过已合并的课程
+                i = j
+        
+        return merged_schedule
+    
+
+    
+    def force_parse_schedule(self):
+        """强制解析课表并生成线性化JSON文件"""
+        try:
+            logger.info("开始强制解析课表...")
+            
+            # 获取账户信息
+            cfg = load_config()
+            username = cfg.get("account", "username", fallback="")
+            password = cfg.get("account", "password", fallback="")
+            
+            if not username or not password:
+                QMessageBox.warning(self, "警告", "请先在基本设置中配置学号和密码！")
+                return False
+            
+            # 获取学校模块
+            school_code = get_current_school_code()
+            school_mod = get_school_module(school_code)
+            
+            if not school_mod:
+                QMessageBox.warning(self, "警告", f"找不到院校模块: {school_code}")
+                return False
+            
+            # 检查是否有所需的方法
+            if not hasattr(school_mod, 'fetch_course_schedule'):
+                QMessageBox.warning(self, "警告", f"院校模块 {school_code} 缺少 fetch_course_schedule 方法")
+                return False
+            
+            # 调用插件获取课表数据
+            schedule_data = school_mod.fetch_course_schedule(username, password, force_update=True)
+            
+            if not schedule_data:
+                QMessageBox.warning(self, "警告", "未能获取到课表数据，请检查网络连接和账号信息！")
+                return False
+            
+            logger.info(f"成功获取课表数据，共 {len(schedule_data)} 条记录")
+            
+            # 线性化处理
+            from core.schedule_linearizer import linearize_schedule, save_linear_schedule
+            
+            # 获取学期开始日期（可选）
+            first_monday = cfg.get("semester", "first_monday", fallback=None)
+            if first_monday:
+                linear_data = linearize_schedule(schedule_data, first_monday)
+            else:
+                linear_data = linearize_schedule(schedule_data)
+            
+            # 保存线性化数据
+            save_path = save_linear_schedule(linear_data, "linear_schedule.json")
+            logger.info(f"线性化课表已保存到: {save_path}")
+            
+            QMessageBox.information(self, "成功", f"课表解析完成！\n共处理 {len(schedule_data)} 条课程记录\n线性化数据已保存")
+            return True
+            
+        except Exception as e:
+            logger.error(f"强制解析课表失败: {e}")
+            QMessageBox.critical(self, "错误", f"课表解析失败：{str(e)}")
+            return False
+    
+    def render_schedule(self, schedule_data, manual_data):
+        """渲染课表数据"""
+        # 准备合并：记录已占用的单元格，手动修改优先
+        occupied = set()
+
+        # 先处理手动修改
+        for key, data in manual_data.items():
+            col, start = map(int, key.split("-"))
+            row = start - 1
+            row_span = data.get("row_span", 1)
+            
+            # 检查周次是否包含在内
+            weeks_list = data.get("周次列表", [])
+            if weeks_list and self.selected_week not in weeks_list:
+                continue
+
+            name = data.get("课程名称", "")
+            room = data.get("教室", "")
+            teacher = data.get("教师", "")
+            
+            if 0 < col <= 7 and 0 < row < self.total_classes:
+                color = self.get_color(name)
+                # 标记手动修改，使用不同颜色区分
+                modified_color = self.adjust_color_brightness(color, -20)  # 稍微加深颜色表示手动修改
+                block = CourseBlock(name, room, teacher, modified_color, is_manual=True)
+                
+                actual_span = min(row_span, self.total_classes - row)
+                # 确保span是正整数且大于1
+                if isinstance(actual_span, int) and actual_span > 1:
+                    self.table.setSpan(row, col, actual_span, 1)
+                self.table.setCellWidget(row, col, block)
+                
+                for r in range(row, row + actual_span):
+                    occupied.add((r, col))
+
+        # 处理课表数据（可能是线性化的或传统的）
+        for i, s in enumerate(schedule_data):
+            # 验证每个课表条目必须是字典
+            if not isinstance(s, dict):
+                logger.warning(f"课表列表中第{i+1}项应为字典，实际类型: {type(s).__name__}")
+                continue
+                
+            day_idx = s.get("星期", 0)
+            start = s.get("开始小节", 0)
+            end = s.get("结束小节", 0)
+            
+            # 对于线性化数据，所有课程都应该显示在当前周次
+            # 对于传统数据，需要检查周次
+            weeks_list = s.get("周次列表", [])
+            if weeks_list and "全学期" not in weeks_list and self.selected_week not in weeks_list:
+                continue
+            
+            if 0 < day_idx <= 7 and 0 < start <= self.total_classes:
+                row = start - 1
+                col = day_idx
+                
+                # 🔍 调试日志：追踪特定课程的渲染
+                if day_idx == 3 and start == 3 and end == 4:  # 周三3-4节
+                    logger.info(f"🔍 调试图标课程渲染:")
+                    logger.info(f"   课程名称: {s.get('课程名称', '未知')}")
+                    logger.info(f"   原始数据: 星期={day_idx}, 开始小节={start}, 结束小节={end}")
+                    logger.info(f"   计算结果: row={row}, col={col}")
+                    logger.info(f"   self.total_classes={self.total_classes}")
+                    logger.info(f"   表格当前行数: {self.table.rowCount()}")
+                
+                if (row, col) in occupied:
+                    continue # 手动修改已占用
+                    
+                name = s.get("课程名称", "")
+                room = s.get("教室", "")
+                teacher = s.get("教师", "")
+                
+                effective_end = min(end, self.total_classes)
+                row_span = effective_end - start + 1
+                
+                # 🔍 继续调试日志
+                if day_idx == 3 and start == 3 and end == 4:
+                    logger.info(f"   effective_end={effective_end}, row_span={row_span}")
+                    logger.info(f"   setSpan调用: setSpan({row}, {col}, {row_span}, 1)")
+                
+                # 检查跨度内是否被占用
+                can_place = True
+                for r in range(row, row + row_span):
+                    if (r, col) in occupied:
+                        can_place = False
+                        break
+                
+                if can_place:
+                    color = self.get_color(name)
+                    # 自动解析的课程保持原色，手动添加的课程使用加深的颜色和虚线边框
+                    block = CourseBlock(name, room, teacher, color, is_manual=False)
+                    # 确保span是正整数且大于1
+                    if isinstance(row_span, int) and row_span > 1:
+                        # 🔍 添加额外的调试信息
+                        if day_idx == 3 and start == 3 and end == 4:
+                            logger.info(f"   🔍 即将调用setSpan前的状态:")
+                            logger.info(f"      occupied集合大小: {len(occupied)}")
+                            logger.info(f"      检查占用情况:")
+                            for r in range(row, row + row_span):
+                                is_occupied = (r, col) in occupied
+                                logger.info(f"         行{r}, 列{col}: {'已占用' if is_occupied else '未占用'}")
+                        
+                        self.table.setSpan(row, col, row_span, 1)
+                        
+                        # 🔍 检查setSpan后的状态
+                        if day_idx == 3 and start == 3 and end == 4:
+                            logger.info(f"   ✅ setSpan执行成功: ({row}, {col}, {row_span}, 1)")
+                            # 验证是否真的设置了合并
+                            try:
+                                actual_row_span = self.table.rowSpan(row, col)
+                                actual_col_span = self.table.columnSpan(row, col)
+                                logger.info(f"   📊 实际合并状态: rowSpan={actual_row_span}, columnSpan={actual_col_span}")
+                            except Exception as e:
+                                logger.error(f"   ❌ 检查合并状态时出错: {e}")
+                    self.table.setCellWidget(row, col, block)
+                    for r in range(row, row + row_span):
+                        occupied.add((r, col))
+                        # 🔍 调试occupied集合更新
+                        if day_idx == 3 and start == 3 and end == 4:
+                            logger.info(f"   ➕ 添加占用记录: ({r}, {col})")
+    
     def load_data(self):
         try:
             # 重新加载配置以获取最新的时间设置
@@ -419,113 +672,61 @@ class ScheduleViewerWindow(QWidget):
             self.table.setRowCount(self.total_classes)
             self.update_time_column()
 
-            schedule_html_file = APPDATA_DIR / "schedule.html"
-            
-            # 1. 加载手动修改的数据
-            manual_data = self.load_manual_schedule()
-            
-            # 2. 加载网页解析的数据
-            parsed_schedule = []
-            if schedule_html_file.exists():
-                with open(schedule_html_file, "r", encoding="utf-8") as f:
-                    html = f.read()
-                
-                school_code = get_current_school_code()
-                school_mod = get_school_module(school_code)
-                if school_mod:
-                    parsed_schedule = school_mod.parse_schedule(html)
-                    
-                    # 验证数据格式 - 插件应返回课表字典列表
-                    if not isinstance(parsed_schedule, list):
-                        raise TypeError(f"插件parse_schedule应返回列表，实际返回类型: {type(parsed_schedule).__name__}")
-                else:
-                    QMessageBox.warning(self, "警告", f"找不到院校模块: {school_code}")
+            # 检查线性化JSON文件是否存在
+            linear_schedule_data = None
+            if LINEARIZER_AVAILABLE and LINEAR_SCHEDULE_FILE.exists():
+                try:
+                    linear_data = load_linear_schedule("linear_schedule.json")
+                    if linear_data and "data" in linear_data:
+                        # 获取当前周次的数据
+                        current_week_key = f"第{self.selected_week}周"
+                        if current_week_key in linear_data["data"]:
+                            week_data = linear_data["data"][current_week_key]
+                            linear_schedule_data = week_data.get("课程列表", [])
+                            logger.info(f"成功加载线性课表数据，第{self.selected_week}周共有{len(linear_schedule_data)}节课")
+                except Exception as e:
+                    logger.warning(f"加载线性课表数据失败: {e}")
+            else:
+                # 如果没有线性化JSON文件，强制要求解析
+                logger.info("未找到线性化课表文件，强制解析课表...")
+                self.force_parse_schedule()
+                # 重新尝试加载
+                if LINEAR_SCHEDULE_FILE.exists():
+                    try:
+                        linear_data = load_linear_schedule("linear_schedule.json")
+                        if linear_data and "data" in linear_data:
+                            current_week_key = f"第{self.selected_week}周"
+                            if current_week_key in linear_data["data"]:
+                                week_data = linear_data["data"][current_week_key]
+                                linear_schedule_data = week_data.get("课程列表", [])
+                                logger.info(f"强制解析后加载线性课表数据，第{self.selected_week}周共有{len(linear_schedule_data)}节课")
+                    except Exception as e:
+                        logger.error(f"强制解析后加载仍失败: {e}")
+                        
+            # 仅使用线性化数据，删除旧的HTML解析方案
+            if linear_schedule_data is None:
+                # 如果仍然没有数据，显示错误信息
+                QMessageBox.warning(self, "警告", "无法加载课表数据，请先刷新课表！")
+                manual_data = {}
+                schedule_data = []
+            else:
+                # 使用线性化数据
+                schedule_data = linear_schedule_data
+                manual_data = self.load_manual_schedule()
             
             # 清除之前的色块和合并单元格
             for r in range(self.total_classes):
                 for c in range(1, 8):
                     self.table.setCellWidget(r, c, None)
-                    self.table.setSpan(r, c, 1, 1)
+                    # 🔍 彻底重置合并状态
+                    try:
+                        self.table.setSpan(r, c, 1, 1)
+                    except:
+                        pass
+                    # 不再重置span，因为默认就是(1,1)，避免警告
 
-            # 3. 准备合并：记录已占用的单元格，手动修改优先
-            occupied = set()
-
-            # 先处理手动修改
-            for key, data in manual_data.items():
-                col, start = map(int, key.split("-"))
-                row = start - 1
-                row_span = data.get("row_span", 1)
-                
-                # 检查周次是否包含在内
-                weeks_list = data.get("周次列表", [])
-                if weeks_list and self.selected_week not in weeks_list:
-                    continue
-
-                name = data.get("课程名称", "")
-                room = data.get("教室", "")
-                teacher = data.get("教师", "")
-                
-                if 0 < col <= 7 and 0 < row < self.total_classes:
-                    color = self.get_color(name)
-                    # 标记手动修改，使用不同颜色区分
-                    modified_color = self.adjust_color_brightness(color, -20)  # 稍微加深颜色表示手动修改
-                    block = CourseBlock(name, room, teacher, modified_color, is_manual=True)
-                    
-                    actual_span = min(row_span, self.total_classes - row)
-                    # 只有当跨越多个单元格时才设置span，避免单个单元格span警告
-                    if actual_span > 1:
-                        self.table.setSpan(row, col, actual_span, 1)
-                    self.table.setCellWidget(row, col, block)
-                    
-                    for r in range(row, row + actual_span):
-                        occupied.add((r, col))
-
-            # 再处理解析到的数据（如果单元格未被手动占用）
-            for i, s in enumerate(parsed_schedule):
-                # 验证每个课表条目必须是字典
-                if not isinstance(s, dict):
-                    raise TypeError(f"课表列表中第{i+1}项应为字典，实际类型: {type(s).__name__}")
-                    
-                day_idx = s.get("星期", 0)
-                start = s.get("开始小节", 0)
-                end = s.get("结束小节", 0)
-                
-                # 关键：检查课程周次
-                weeks_list = s.get("周次列表", [])
-                if "全学期" not in weeks_list and self.selected_week not in weeks_list:
-                    continue
-                
-                if 0 < day_idx <= 7 and 0 < start <= self.total_classes:
-                    row = start - 1
-                    col = day_idx
-                    
-                    if (row, col) in occupied:
-                        continue # 手动修改已占用
-                        
-                    name = s.get("课程名称", "")
-                    room = s.get("教室", "")
-                    teacher = s.get("教师", "")
-                    
-                    effective_end = min(end, self.total_classes)
-                    row_span = effective_end - start + 1
-                    
-                    # 检查跨度内是否被占用
-                    can_place = True
-                    for r in range(row, row + row_span):
-                        if (r, col) in occupied:
-                            can_place = False
-                            break
-                    
-                    if can_place:
-                        color = self.get_color(name)
-                        # 自动解析的课程保持原色，手动添加的课程使用加深的颜色和虚线边框
-                        block = CourseBlock(name, room, teacher, color, is_manual=False)
-                        # 只有当跨越多个单元格时才设置span，避免单个单元格span警告
-                        if row_span > 1:
-                            self.table.setSpan(row, col, row_span, 1)
-                        self.table.setCellWidget(row, col, block)
-                        for r in range(row, row + row_span):
-                            occupied.add((r, col))
+            # 渲染课表数据
+            self.render_schedule(schedule_data, manual_data)
                     
         except Exception as e:
             QMessageBox.critical(self, "加载失败", f"渲染课表失败：{e}")

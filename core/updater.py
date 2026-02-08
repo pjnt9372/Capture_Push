@@ -548,6 +548,37 @@ class Updater:
             logger.error(f"启动安装程序失败: {e}")
             return False
     
+    def prepare_and_prompt_install(self, installer_path: str, operation_type: str = "更新") -> tuple[bool, str]:
+        """
+        准备安装包并提示用户确认安装
+        
+        Args:
+            installer_path: 安装包路径
+            operation_type: 操作类型（"更新" 或 "修复"）
+        
+        Returns:
+            tuple[bool, str]: (是否需要安装, 安装包路径)
+        """
+        try:
+            logger.info(f"准备{operation_type}安装包: {installer_path}")
+            
+            # 检查文件是否存在
+            if not os.path.exists(installer_path):
+                logger.error(f"安装包不存在: {installer_path}")
+                return False, installer_path
+            
+            # 保存安装包到程序目录
+            saved_path = self.save_installer_locally(installer_path)
+            
+            logger.info(f"{operation_type}包已准备就绪: {saved_path}")
+            
+            # 返回需要用户确认安装
+            return True, saved_path
+            
+        except Exception as e:
+            logger.error(f"准备{operation_type}安装包失败: {e}")
+            return False, installer_path
+    
     def check_python_env(self) -> bool:
         """
         检查是否存在 Python 环境

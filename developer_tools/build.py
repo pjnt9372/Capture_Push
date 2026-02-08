@@ -194,6 +194,7 @@ def main():
         if item.is_file():
             # 复制 core 目录下的所有文件
             shutil.copy2(item, core_dst / item.name)
+            log(f"已复制 core 文件: {item.name}")
         elif item.is_dir():
             # 复制 core 目录下的所有子目录
             item_dst = core_dst / item.name
