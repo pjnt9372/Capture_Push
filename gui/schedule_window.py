@@ -155,7 +155,8 @@ class ScheduleViewerWindow(QWidget):
         # 周次切换
         top_ctrl.addWidget(QLabel("当前显示："))
         self.week_combo = QSpinBox()
-        self.week_combo.setRange(1, 25) # 稍微扩大范围
+        self.week_combo.setRange(0, 25) # 包含第0周
+        self.week_combo.setSpecialValueText("第 0 周 (全部)")
         self.week_combo.setValue(self.selected_week)
         self.week_combo.setPrefix("第 ")
         self.week_combo.setSuffix(" 周")
@@ -168,7 +169,8 @@ class ScheduleViewerWindow(QWidget):
         self.update_this_week_label()
             
         top_ctrl.addStretch()
-        top_ctrl.addWidget(QLabel("提示：双击单元格进行手动编辑"))
+        self.tip_label = QLabel("提示：双击单元格进行手动编辑")
+        top_ctrl.addWidget(self.tip_label)
         layout.addLayout(top_ctrl)
 
         self.table = QTableWidget()
@@ -218,10 +220,23 @@ class ScheduleViewerWindow(QWidget):
     def on_week_changed(self, value):
         self.selected_week = value
         self.update_this_week_label()
+        
+        # 更新提示信息
+        if value == 0:
+            self.tip_label.setText("提示：第0周展示本学期所有课程，相同时间段的课程将聚合显示")
+            self.tip_label.setStyleSheet("color: #d83b01; font-weight: bold;")
+        else:
+            self.tip_label.setText("提示：双击单元格进行手动编辑")
+            self.tip_label.setStyleSheet("")
+            
         self.load_data()
 
     def update_this_week_label(self):
         """更新本周标识标签"""
+        if self.selected_week == 0:
+            self.this_week_label.setText(f"(本周是第 {self.current_week} 周)")
+            return
+
         if self.selected_week == self.current_week:
             self.this_week_label.setText("(本周)")
         else:
@@ -544,7 +559,7 @@ class ScheduleViewerWindow(QWidget):
             
             # 检查周次是否包含在内
             weeks_list = data.get("周次列表", [])
-            if weeks_list and self.selected_week not in weeks_list:
+            if self.selected_week != 0 and weeks_list and self.selected_week not in weeks_list:
                 continue
 
             name = data.get("课程名称", "")
@@ -567,6 +582,92 @@ class ScheduleViewerWindow(QWidget):
                     occupied.add((r, col))
 
         # 处理课表数据（可能是线性化的或传统的）
+        
+        # 第0周特殊处理：按（星期，开始小节）分组进行合并显示
+        if self.selected_week == 0:
+            # 使用字典按 (星期, 开始小节) 聚合课程
+            merged_cells = {}
+            
+            for s in schedule_data:
+                day_idx = s.get("星期", 0)
+                start = s.get("开始小节", 0)
+                end = s.get("结束小节", 0)
+                
+                if 0 < day_idx <= 7 and 0 < start <= self.total_classes:
+                    key = (day_idx, start)
+                    if key not in merged_cells:
+                        merged_cells[key] = []
+                    merged_cells[key].append(s)
+
+            # 遍历聚合后的课程组进行渲染
+            for (day_idx, start), courses in merged_cells.items():
+                row = start - 1
+                col = day_idx
+                
+                # 计算该时间段所有课程的最大结束节次，作为合并行数
+                max_end = start
+                for s in courses:
+                    max_end = max(max_end, s.get("结束小节", start))
+                
+                effective_end = min(max_end, self.total_classes)
+                row_span = effective_end - start + 1
+                
+                # 构建单元格显示文本
+                # 格式：[周次] 课程名 @教室 教师
+                display_texts = []
+                first_course_name = courses[0].get("课程名称", "")
+                
+                for s in courses:
+                    name = s.get("课程名称", "")
+                    room = s.get("教室", "")
+                    teacher = s.get("教师", "")
+                    weeks_list = s.get("周次列表", [])
+                    weeks_str = self.format_weeks_list(weeks_list)
+                    
+                    # 组合单门课程信息
+                    course_info = f"[{weeks_str}周] {name}"
+                    details = []
+                    if room: details.append(f"@{room}")
+                    if teacher: details.append(f"{teacher}")
+                    if details:
+                        course_info += "\n" + " ".join(details)
+                    
+                    display_texts.append(course_info)
+                
+                # 多门课程之间用空行分隔
+                final_text = "\n\n".join(display_texts)
+                
+                # 检查是否被手动修改占用（手动修改优先级最高）
+                if (row, col) in occupied:
+                    continue
+                
+                # 检查合并区域是否被占用
+                can_place = True
+                for r in range(row, row + row_span):
+                    if (r, col) in occupied:
+                        can_place = False
+                        break
+                
+                if can_place:
+                    # 使用第一门课的颜色作为背景色
+                    color = self.get_color(first_course_name)
+                    
+                    # 将合并后的文本直接作为 name 传入，其他字段置空
+                    # CourseBlock 会自动处理换行
+                    block = CourseBlock(final_text, "", "", color, is_manual=False, is_week_zero=True)
+                    
+                    # 设置合并单元格
+                    if isinstance(row_span, int) and row_span > 1:
+                        self.table.setSpan(row, col, row_span, 1)
+                        
+                    self.table.setCellWidget(row, col, block)
+                    
+                    # 标记占用
+                    for r in range(row, row + row_span):
+                        occupied.add((r, col))
+            
+            return # 第0周渲染结束，跳过后续常规渲染逻辑
+
         for i, s in enumerate(schedule_data):
             # 验证每个课表条目必须是字典
             if not isinstance(s, dict):
@@ -580,7 +681,7 @@ class ScheduleViewerWindow(QWidget):
             # 对于线性化数据，所有课程都应该显示在当前周次
             # 对于传统数据，需要检查周次
             weeks_list = s.get("周次列表", [])
-            if weeks_list and "全学期" not in weeks_list and self.selected_week not in weeks_list:
+            if self.selected_week != 0 and weeks_list and "全学期" not in weeks_list and self.selected_week not in weeks_list:
                 continue
             
             if 0 < day_idx <= 7 and 0 < start <= self.total_classes:
@@ -620,6 +721,14 @@ class ScheduleViewerWindow(QWidget):
                 
                 if can_place:
                     color = self.get_color(name)
+                    
+                    # 第0周强制显示周次范围
+                    if self.selected_week == 0:
+                        weeks_list = s.get("周次列表", [])
+                        weeks_str = self.format_weeks_list(weeks_list)
+                        if weeks_str:
+                            name = f"{name}\n[第{weeks_str}周]"
+                    
                     # 自动解析的课程保持原色，手动添加的课程使用加深的颜色和虚线边框
                     block = CourseBlock(name, room, teacher, color, is_manual=False)
                     # 确保span是正整数且大于1
@@ -652,6 +761,63 @@ class ScheduleViewerWindow(QWidget):
                         if day_idx == 3 and start == 3 and end == 4:
                             logger.info(f"   ➕ 添加占用记录: ({r}, {col})")
     
+    def aggregate_all_courses(self, linear_data):
+        """聚合所有周次的课程数据，确保周次完整性"""
+        import copy
+        all_courses = {}
+        if not linear_data or "data" not in linear_data:
+            return []
+            
+        for week_key, week_data in linear_data["data"].items():
+            courses = week_data.get("课程列表", [])
+            for course in courses:
+                # 生成唯一键：星期+开始+结束+名称+教师+教室
+                # 这样相同的课程在不同周次出现时会被去重
+                key = (
+                    course.get("星期", 0),
+                    course.get("开始小节", 0),
+                    course.get("结束小节", 0),
+                    course.get("课程名称", ""),
+                    course.get("教师", ""),
+                    course.get("教室", "")
+                )
+                
+                if key not in all_courses:
+                    # 使用深拷贝避免修改原始数据
+                    all_courses[key] = copy.deepcopy(course)
+                else:
+                    # 合并周次列表，确保数据完整性
+                    existing_weeks = set(all_courses[key].get("周次列表", []))
+                    new_weeks = set(course.get("周次列表", []))
+                    if new_weeks - existing_weeks:
+                        combined = sorted(list(existing_weeks | new_weeks))
+                        all_courses[key]["周次列表"] = combined
+        
+        return list(all_courses.values())
+
+    def fetch_raw_schedule_from_plugin(self):
+        """直接调用插件获取原始课表数据（非线性化）"""
+        try:
+            cfg = load_config()
+            username = cfg.get("account", "username", fallback="")
+            password = cfg.get("account", "password", fallback="")
+            
+            if not username or not password:
+                return None
+            
+            school_code = get_current_school_code()
+            school_mod = get_school_module(school_code)
+            
+            if not school_mod or not hasattr(school_mod, 'fetch_course_schedule'):
+                return None
+                
+            # 调用插件，默认不强制更新，利用插件自身的缓存机制（如果有）
+            logger.info("尝试直接从插件获取原始课表数据...")
+            return school_mod.fetch_course_schedule(username, password, force_update=False)
+        except Exception as e:
+            logger.error(f"直接调用插件获取课表失败: {e}")
+            return None
+
     def load_data(self):
         try:
             # 重新加载配置以获取最新的时间设置
@@ -674,41 +840,71 @@ class ScheduleViewerWindow(QWidget):
 
             # 检查线性化JSON文件是否存在
             linear_schedule_data = None
-            if LINEARIZER_AVAILABLE and LINEAR_SCHEDULE_FILE.exists():
-                try:
-                    linear_data = load_linear_schedule("linear_schedule.json")
-                    if linear_data and "data" in linear_data:
-                        # 获取当前周次的数据
-                        current_week_key = f"第{self.selected_week}周"
-                        if current_week_key in linear_data["data"]:
-                            week_data = linear_data["data"][current_week_key]
-                            linear_schedule_data = week_data.get("课程列表", [])
-                            logger.info(f"成功加载线性课表数据，第{self.selected_week}周共有{len(linear_schedule_data)}节课")
-                except Exception as e:
-                    logger.warning(f"加载线性课表数据失败: {e}")
-            else:
-                # 如果没有线性化JSON文件，强制要求解析
-                logger.info("未找到线性化课表文件，强制解析课表...")
-                self.force_parse_schedule()
-                # 重新尝试加载
-                if LINEAR_SCHEDULE_FILE.exists():
+            
+            # 第0周特殊处理：优先直接调用插件获取原始数据
+            if self.selected_week == 0:
+                logger.info("第0周模式：尝试直接调用插件获取原始课表数据...")
+                raw_data = self.fetch_raw_schedule_from_plugin()
+                if raw_data:
+                    # 原始数据通常是列表，直接使用
+                    linear_schedule_data = raw_data
+                    logger.info(f"成功从插件获取原始数据，共{len(linear_schedule_data)}条")
+                else:
+                    logger.warning("从插件获取数据失败，将尝试降级使用线性化数据")
+
+            # 如果没有通过插件获取到数据（非第0周，或获取失败），则走原有逻辑
+            if linear_schedule_data is None:
+                if LINEARIZER_AVAILABLE and LINEAR_SCHEDULE_FILE.exists():
                     try:
                         linear_data = load_linear_schedule("linear_schedule.json")
                         if linear_data and "data" in linear_data:
-                            current_week_key = f"第{self.selected_week}周"
-                            if current_week_key in linear_data["data"]:
-                                week_data = linear_data["data"][current_week_key]
-                                linear_schedule_data = week_data.get("课程列表", [])
-                                logger.info(f"强制解析后加载线性课表数据，第{self.selected_week}周共有{len(linear_schedule_data)}节课")
+                            if self.selected_week == 0:
+                                # 聚合模式：加载所有周次的课程
+                                linear_schedule_data = self.aggregate_all_courses(linear_data)
+                                logger.info(f"成功加载聚合课表数据，共{len(linear_schedule_data)}节课")
+                            else:
+                                # 获取当前周次的数据
+                                current_week_key = f"第{self.selected_week}周"
+                                if current_week_key in linear_data["data"]:
+                                    week_data = linear_data["data"][current_week_key]
+                                    linear_schedule_data = week_data.get("课程列表", [])
+                                    logger.info(f"成功加载线性课表数据，第{self.selected_week}周共有{len(linear_schedule_data)}节课")
+                                else:
+                                    linear_schedule_data = []
+                                    logger.info(f"第{self.selected_week}周无课程数据，显示为空")
                     except Exception as e:
-                        logger.error(f"强制解析后加载仍失败: {e}")
+                        logger.warning(f"加载线性课表数据失败: {e}")
+                else:
+                    # 如果没有线性化JSON文件，强制要求解析
+                    logger.info("未找到线性化课表文件，强制解析课表...")
+                    self.force_parse_schedule()
+                    # 重新尝试加载
+                    if LINEAR_SCHEDULE_FILE.exists():
+                        try:
+                            linear_data = load_linear_schedule("linear_schedule.json")
+                            if linear_data and "data" in linear_data:
+                                if self.selected_week == 0:
+                                    linear_schedule_data = self.aggregate_all_courses(linear_data)
+                                    logger.info(f"强制解析后加载聚合课表数据，共{len(linear_schedule_data)}节课")
+                                else:
+                                    current_week_key = f"第{self.selected_week}周"
+                                    if current_week_key in linear_data["data"]:
+                                        week_data = linear_data["data"][current_week_key]
+                                        linear_schedule_data = week_data.get("课程列表", [])
+                                        logger.info(f"强制解析后加载线性课表数据，第{self.selected_week}周共有{len(linear_schedule_data)}节课")
+                                    else:
+                                        linear_schedule_data = []
+                                        logger.info(f"第{self.selected_week}周无课程数据，显示为空")
+                        except Exception as e:
+                            logger.error(f"强制解析后加载仍失败: {e}")
                         
             # 仅使用线性化数据，删除旧的HTML解析方案
             if linear_schedule_data is None:
-                # 如果仍然没有数据，显示错误信息
-                QMessageBox.warning(self, "警告", "无法加载课表数据，请先刷新课表！")
-                manual_data = {}
+                # 即使没有数据也不弹窗，而是显示为空
+                logger.warning("未获取到课表数据或加载失败，显示空白")
                 schedule_data = []
+                # 仍然尝试加载手动数据
+                manual_data = self.load_manual_schedule()
             else:
                 # 使用线性化数据
                 schedule_data = linear_schedule_data

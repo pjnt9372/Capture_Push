@@ -308,7 +308,7 @@ def init_logger(module_name):
     has_file = any(isinstance(h, logging.FileHandler) and h.baseFilename == str(log_file_path.absolute()) for h in root_logger.handlers)
     
     # 统一的格式化器：包含模块名 (%(name)s)
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s'
+    log_format =  '%(asctime)s - %(filename)s:%(lineno)d  - %(levelname)s - %(funcName)s - %(message)s'
     formatter = logging.Formatter(log_format)
     
     if not has_console:
