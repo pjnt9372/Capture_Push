@@ -26,6 +26,19 @@ except ImportError:
 
 logger = get_logger('data_exporter')
 
+# 导入课程时间配置模块
+try:
+    from core.course_time_config import get_course_time_config
+except ImportError:
+    def get_course_time_config():
+        return {
+            "morning_classes": 4,
+            "afternoon_classes": 4,
+            "evening_classes": 2,
+            "total_classes": 10,
+            "class_times": {}
+        }
+
 # 定义数据存储路径
 APPDATA_DIR = Path.home() / "AppData" / "Local" / "Capture_Push"
 
@@ -83,10 +96,14 @@ def export_full_data(output_path: Optional[str] = None) -> Dict[str, Any]:
     # 成绩数据已移除（根据用户要求）
     grades_data = []
     
-    # 构建完整数据结构（不含成绩数据）
+    # 获取课程时间配置
+    course_config = get_course_time_config()
+    
+    # 构建课表数据结构
     export_data = {
         "metadata": metadata,
-        "schedule": schedule_data
+        "schedule": schedule_data,
+        "course_config": course_config
     }
     
     # 如果指定了输出路径，则保存到文件
@@ -139,9 +156,13 @@ def export_schedule_only(output_path: Optional[str] = None) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"加载线性化课表数据失败: {e}")
     
+    # 获取课程时间配置
+    course_config = get_course_time_config()
+    
     export_data = {
         "metadata": metadata,
-        "schedule": schedule_data
+        "schedule": schedule_data,
+        "course_config": course_config
     }
     
     if output_path:

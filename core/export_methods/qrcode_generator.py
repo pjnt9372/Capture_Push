@@ -80,10 +80,13 @@ def decompress_data(base64_str: str) -> Dict[str, Any]:
         return {}
 
 
-def generate_network_qr_code() -> Dict[str, Any]:
+def generate_network_qr_code(auto_start_server: bool = True) -> Dict[str, Any]:
     """
     生成网络传输二维码
     
+    Args:
+        auto_start_server: 是否自动启动服务器
+        
     Returns:
         包含二维码信息的字典
     """
@@ -93,6 +96,19 @@ def generate_network_qr_code() -> Dict[str, Any]:
     try:
         # 获取服务器状态
         server_status = get_server_status()
+        
+        # 如果服务器未运行且需要自动启动
+        if not server_status.get("running", False) and auto_start_server:
+            # 尝试启动服务器
+            from core.export_methods.network_server import start_server
+            if start_server("0.0.0.0", 8080):
+                # 等待服务器启动
+                import time
+                time.sleep(1)
+                # 重新获取状态
+                server_status = get_server_status()
+            else:
+                return {"status": "error", "message": "服务器启动失败"}
         
         if not server_status.get("running", False):
             return {"status": "error", "message": "服务器未启动"}

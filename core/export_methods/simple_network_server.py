@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-局域网传输服务模块
-提供HTTP服务器用于安卓设备获取数据
+简化版局域网传输服务模块
+只提供一个统一的JSON数据展示端点
 """
 
 import json
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from typing import Dict, Any, Optional
 import socket
 
@@ -20,19 +20,17 @@ except ImportError:
 
 # 导入数据导出器
 try:
-    from core.data_exporter import export_full_data, get_export_summary
+    from core.data_exporter import export_full_data
 except ImportError:
     # 备用导入
     try:
-        from data_exporter import export_full_data, get_export_summary
+        from data_exporter import export_full_data
     except ImportError:
         # 如果都失败，创建模拟函数
         def export_full_data():
-            return {"error": "data_exporter not available"}
-        def get_export_summary():
-            return {"error": "data_exporter not available"}
+            return {"error": "data_exporter not available", "message": "数据导出模块不可用"}
 
-logger = get_logger('network_server')
+logger = get_logger('simple_network_server')
 
 # 默认配置
 DEFAULT_HOST = "0.0.0.0"  # 监听所有接口
@@ -41,12 +39,8 @@ SERVER_INSTANCE = None
 SERVER_THREAD = None
 
 
-class DataExportHandler(BaseHTTPRequestHandler):
-    """数据导出HTTP请求处理器"""
-    
-    def __init__(self, *args, **kwargs):
-        self.data_exporter = None
-        super().__init__(*args, **kwargs)
+class SimpleDataHandler(BaseHTTPRequestHandler):
+    """简化版数据HTTP请求处理器"""
     
     def log_message(self, format, *args):
         """重写日志方法，使用项目日志系统"""
@@ -56,17 +50,12 @@ class DataExportHandler(BaseHTTPRequestHandler):
         """处理GET请求"""
         parsed_path = urlparse(self.path)
         path = parsed_path.path
-        query_params = parse_qs(parsed_path.query)
         
         try:
-            if path == "/":
-                self._handle_root()
-            elif path == "/api/status":
+            if path == "/" or path == "/data":
+                self._handle_data()
+            elif path == "/status":
                 self._handle_status()
-            elif path == "/api/full":
-                self._handle_full_data()
-            elif path == "/api/summary":
-                self._handle_summary()
             else:
                 self._handle_not_found()
         except Exception as e:
@@ -83,75 +72,81 @@ class DataExportHandler(BaseHTTPRequestHandler):
         response_data = json.dumps(data, ensure_ascii=False, indent=2)
         self.wfile.write(response_data.encode('utf-8'))
     
-    def _handle_root(self):
-        """处理根路径请求"""
-        response = {
-            "service": "Capture_Push Data Export Service",
-            "version": "1.0",
-            "status": "running",
-            "available_endpoints": [
-                "/api/status",
-                "/api/full",
-                "/api/summary"
-            ],
-            "timestamp": time.time()
-        }
-        self._send_json_response(response)
+    def _send_html_response(self, html_content: str, status_code: int = 200):
+        """发送HTML响应"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(html_content.encode('utf-8'))
+    
+    def _handle_data(self):
+        """处理数据请求 - 返回完整JSON数据"""
+        logger.info("收到数据请求")
+        try:
+            # 获取完整数据
+            data = export_full_data()
+            
+            if isinstance(data, dict) and data.get("status") == "error":
+                self._send_json_response({"error": data["message"]}, 500)
+            else:
+                # 直接返回原始数据，不做额外包装
+                self._send_json_response(data)
+        except Exception as e:
+            self._handle_error(f"获取数据失败: {str(e)}")
     
     def _handle_status(self):
         """处理状态查询"""
         response = {
             "status": "online",
+            "service": "Capture_Push Simple Data Server",
+            "version": "1.0",
             "timestamp": time.time(),
             "host": self.server.server_address[0],
             "port": self.server.server_address[1]
         }
         self._send_json_response(response)
     
-    def _handle_full_data(self):
-        """处理完整数据请求"""
-        logger.info("收到完整数据请求")
-        try:
-            data = export_full_data()
-            if isinstance(data, dict) and "status" in data and data["status"] == "error":
-                self._send_json_response({"error": data["message"]}, 500)
-            else:
-                response = {
-                    "data": data,
-                    "timestamp": time.time(),
-                    "type": "full"
-                }
-                self._send_json_response(response)
-        except Exception as e:
-            self._handle_error(f"获取完整数据失败: {str(e)}")
-    
-    def _handle_summary(self):
-        """处理摘要信息请求"""
-        logger.info("收到摘要信息请求")
-        try:
-            summary = get_export_summary()
-            response = {
-                "summary": summary,
-                "timestamp": time.time()
-            }
-            self._send_json_response(response)
-        except Exception as e:
-            self._handle_error(f"获取摘要信息失败: {str(e)}")
-    
     def _handle_not_found(self):
         """处理404错误"""
-        self.send_response(404)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        response = {
-            "error": "Endpoint not found",
-            "available_endpoints": [
-                "/api/status",
-                "/api/full",
-                "/api/summary"
-            ]
-        }
-        self.wfile.write(json.dumps(response).encode())
+        # 提供友好的HTML页面
+        html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Capture_Push 数据服务</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        h1 { color: #333; }
+        code { background: #eee; padding: 2px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Capture_Push 数据传输服务</h1>
+        <p>欢迎使用Capture_Push数据传输服务。以下是可用的端点：</p>
+        
+        <div class="endpoint">
+            <strong>主数据端点:</strong><br>
+            <code>GET /data</code> 或 <code>GET /</code><br>
+            返回完整的课表和配置数据
+        </div>
+        
+        <div class="endpoint">
+            <strong>状态端点:</strong><br>
+            <code>GET /status</code><br>
+            返回服务器运行状态
+        </div>
+        
+        <p><em>服务由Capture_Push提供</em></p>
+    </div>
+</body>
+</html>
+        """
+        self._send_html_response(html_content, 404)
     
     def _handle_error(self, error_message: str):
         """处理服务器内部错误"""
@@ -165,8 +160,8 @@ class DataExportHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(response).encode())
 
 
-class DataExportServer:
-    """数据导出服务器类"""
+class SimpleDataServer:
+    """简化版数据服务器类"""
     
     def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
         self.host = host
@@ -196,17 +191,18 @@ class DataExportServer:
         
         try:
             # 尝试启动服务器
-            self.httpd = HTTPServer((self.host, self.port), DataExportHandler)
+            self.httpd = HTTPServer((self.host, self.port), SimpleDataHandler)
             self.is_running = True
             self.start_time = time.time()
             
             local_ip = self.get_local_ip()
             if local_ip:
-                logger.info(f"数据导出服务器已启动")
-                logger.info(f"访问地址: http://{local_ip}:{self.port}")
-                logger.info(f"本地地址: http://localhost:{self.port}")
+                logger.info(f"简化数据服务器已启动")
+                logger.info(f"主数据端点: http://{local_ip}:{self.port}/data")
+                logger.info(f"状态端点: http://{local_ip}:{self.port}/status")
+                logger.info(f"本地访问: http://localhost:{self.port}")
             else:
-                logger.info(f"数据导出服务器已启动，端口: {self.port}")
+                logger.info(f"简化数据服务器已启动，端口: {self.port}")
             
             # 在新线程中运行服务器
             server_thread = threading.Thread(target=self._run_server, daemon=True)
@@ -238,13 +234,15 @@ class DataExportServer:
                 self.httpd.server_close()
             
             self.is_running = False
-            logger.info("数据导出服务器已停止")
+            logger.info("简化数据服务器已停止")
         except Exception as e:
             logger.error(f"停止服务器失败: {e}")
     
     def get_status(self) -> Dict[str, Any]:
         """获取服务器状态"""
         local_ip = self.get_local_ip()
+        base_url = f"http://{local_ip}:{self.port}" if local_ip else f"http://localhost:{self.port}"
+        
         return {
             "running": self.is_running,
             "host": self.host,
@@ -252,11 +250,11 @@ class DataExportServer:
             "local_ip": local_ip,
             "start_time": self.start_time,
             "uptime": time.time() - self.start_time if self.start_time else 0,
-            "api_endpoints": [
-                f"http://{local_ip}:{self.port}/api/status" if local_ip else f"http://localhost:{self.port}/api/status",
-                f"http://{local_ip}:{self.port}/api/full" if local_ip else f"http://localhost:{self.port}/api/full",
-                f"http://{local_ip}:{self.port}/api/summary" if local_ip else f"http://localhost:{self.port}/api/summary"
-            ]
+            "endpoints": {
+                "main_data": f"{base_url}/data",
+                "root": f"{base_url}/",
+                "status": f"{base_url}/status"
+            }
         }
 
 
@@ -269,7 +267,7 @@ def start_server(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         return True
     
     try:
-        SERVER_INSTANCE = DataExportServer(host, port)
+        SERVER_INSTANCE = SimpleDataServer(host, port)
         success = SERVER_INSTANCE.start()
         
         if success:
@@ -307,7 +305,7 @@ if __name__ == "__main__":
     import signal
     import sys
     
-    parser = argparse.ArgumentParser(description="Capture_Push 局域网数据传输服务")
+    parser = argparse.ArgumentParser(description="Capture_Push 简化数据传输服务")
     parser.add_argument("--host", default=DEFAULT_HOST, help="绑定主机地址")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="绑定端口号")
     parser.add_argument("--status", action="store_true", help="显示服务器状态")
@@ -319,11 +317,13 @@ if __name__ == "__main__":
         print(json.dumps(status, ensure_ascii=False, indent=2))
     else:
         # 启动服务器
-        print(f"正在启动数据传输服务...")
+        print(f"正在启动简化数据传输服务...")
         print(f"绑定地址: {args.host}:{args.port}")
         
         if start_server(args.host, args.port):
             print("服务启动成功!")
+            print("主数据端点: /data")
+            print("状态端点: /status")
             print("按 Ctrl+C 停止服务")
             
             def signal_handler(sig, frame):
