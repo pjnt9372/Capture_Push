@@ -125,7 +125,7 @@ class ConfigWindow(QMainWindow):
         self.push_tab = PushTab(self, self.config_manager)
         self.about_tab = AboutTab(self, self.config_manager)
         self.plugin_management_tab = PluginManagementTab(self, self.config_manager)
-        try:
+        """try:
             from gui.tabs.data_transfer_tab import DataTransferTab
             self.data_transfer_tab = DataTransferTab(self)
         except ImportError as e:
@@ -135,7 +135,7 @@ class ConfigWindow(QMainWindow):
             placeholder_widget = QWidget()
             placeholder_layout = QVBoxLayout(placeholder_widget)
             placeholder_layout.addWidget(QLabel("数据传输功能暂时不可用"))
-            self.data_transfer_tab = placeholder_widget
+            self.data_transfer_tab = placeholder_widget"""
 
 
         # Add tabs to the tab widget
@@ -145,7 +145,7 @@ class ConfigWindow(QMainWindow):
         self.tab_widget.addTab(self.school_time_tab, "学校时间")
         self.tab_widget.addTab(self.push_tab, "推送设置")
         self.tab_widget.addTab(self.plugin_management_tab, "插件管理")
-        self.tab_widget.addTab(self.data_transfer_tab, "数据传输")
+        #self.tab_widget.addTab(self.data_transfer_tab, "数据传输")
         self.tab_widget.addTab(self.about_tab, "关于")
 
         # Status Bar
@@ -161,7 +161,7 @@ class ConfigWindow(QMainWindow):
             "school_time": self.school_time_tab,
             "push": self.push_tab,
             "plugin_management": self.plugin_management_tab,
-            "data_transfer": self.data_transfer_tab,
+            #"data_transfer": self.data_transfer_tab,
             "about": self.about_tab,
         }
         
